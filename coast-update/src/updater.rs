@@ -262,5 +262,4 @@ mod tests {
         let result = apply_update(Path::new("/nonexistent/coast.tar.gz"));
         assert!(result.is_err());
     }
-
 }
