@@ -160,10 +160,10 @@ fn replace_binary(new_path: &Path, target_path: &Path) -> Result<(), UpdateError
     // Move current binary out of the way
     if target_path.exists() {
         std::fs::rename(target_path, &backup).map_err(|e| {
-            UpdateError::ApplyFailed(permission_hint(format!(
-                "Failed to backup {}: {e}",
-                target_path.display()
-            ), &e))
+            UpdateError::ApplyFailed(permission_hint(
+                format!("Failed to backup {}: {e}", target_path.display()),
+                &e,
+            ))
         })?;
     }
 
@@ -173,10 +173,13 @@ fn replace_binary(new_path: &Path, target_path: &Path) -> Result<(), UpdateError
         if backup.exists() {
             let _ = std::fs::rename(&backup, target_path);
         }
-        return Err(UpdateError::ApplyFailed(permission_hint(format!(
-            "Failed to install new binary at {}: {e}",
-            target_path.display()
-        ), &e)));
+        return Err(UpdateError::ApplyFailed(permission_hint(
+            format!(
+                "Failed to install new binary at {}: {e}",
+                target_path.display()
+            ),
+            &e,
+        )));
     }
 
     // Make executable
