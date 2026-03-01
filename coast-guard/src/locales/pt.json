@@ -453,6 +453,7 @@
   "docker.restartWarning": "O Docker Desktop será reiniciado. Contêineres em execução podem ser interrompidos.",
   "docker.notAvailable": "Docker Desktop é necessário para ajustar a memória.",
   "docker.adjustError": "Falha ao ajustar memória: {{error}}",
+  "docker.notRunning": "Docker não está em execução",
 
   "docs.title": "Documentação",
   "docs.backToProjects": "Voltar aos projetos",

@@ -47,9 +47,8 @@ use rust_i18n::t;
 
 /// Default path for the daemon socket.
 fn socket_path() -> std::path::PathBuf {
-    dirs::home_dir()
-        .expect("Could not determine home directory")
-        .join(".coast")
+    coast_core::artifact::coast_home()
+        .expect("Could not determine coast home directory")
         .join("coastd.sock")
 }
 

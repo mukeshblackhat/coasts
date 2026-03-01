@@ -68,8 +68,11 @@ pub struct CachedImage {
 
 /// The root directory for all coast data.
 ///
-/// Defaults to `~/.coast/`.
+/// Reads `COAST_HOME` if set, otherwise defaults to `~/.coast/`.
 pub fn coast_home() -> Result<PathBuf> {
+    if let Ok(dir) = std::env::var("COAST_HOME") {
+        return Ok(PathBuf::from(shellexpand::tilde(&dir).into_owned()));
+    }
     let home = dirs::home_dir().ok_or_else(|| {
         CoastError::artifact("cannot determine home directory. Set $HOME and try again.")
     })?;

@@ -58,6 +58,55 @@ coast rm feature-x
 
 ## Development
 
+### Dev setup
+
+If you have coast globally installed, the production daemon occupies `~/.coast/` and port 31415. The workspace builds separate `coast-dev` and `coastd-dev` binaries that use `~/.coast-dev/` and port 31416, so the two never conflict.
+
+Run the setup script once to build everything and symlink the dev binaries into `~/.local/bin`:
+
+```bash
+./dev_setup.sh
+```
+
+This builds the web UI, compiles the workspace, and creates `coast-dev` / `coastd-dev` symlinks. On first run it adds `~/.local/bin` to your PATH — restart your shell or `source ~/.zshrc` to pick it up.
+
+### Day-to-day development workflow
+
+You'll want three terminals:
+
+**Terminal 1 — dev daemon:**
+
+```bash
+coast-dev daemon start        # start in background
+# or: coastd-dev --foreground # start in foreground for log output
+```
+
+After Rust changes are rebuilt by `make watch`, restart the daemon to pick them up:
+
+```bash
+coast-dev daemon restart
+```
+
+**Terminal 2 — Rust rebuild on save:**
+
+```bash
+make watch
+```
+
+This runs `cargo watch` and recompiles the workspace whenever Rust source files change. After a rebuild completes, restart the daemon in Terminal 1.
+
+**Terminal 3 — web UI with hot reload:**
+
+```bash
+cd coast-guard
+npm install
+npm run dev:coast-dev
+```
+
+This starts the Vite dev server on `http://localhost:5173` with hot module replacement, proxying `/api` requests to the dev daemon at `localhost:31416`.
+
+> Use `npm run dev` (without `:coast-dev`) if you're developing the UI against a production daemon on port 31415.
+
 ### Makefile targets
 
 The [Makefile](Makefile) is the primary entry point for development tasks:
@@ -72,16 +121,6 @@ The [Makefile](Makefile) is the primary entry point for development tasks:
 | `make watch` | Rebuild on source changes (requires `cargo-watch`) |
 
 ### Coast Guard (web UI)
-
-The web UI lives in `coast-guard/`. During development, the daemon serves it as an embedded SPA, but for hot-reloading it is easiest to run the Vite dev server directly:
-
-```bash
-cd coast-guard
-npm install
-npm run dev
-```
-
-This starts the UI on `http://localhost:5173` with hot module replacement. The Vite dev server proxies `/api` requests to the daemon at `localhost:31415`, so you need `coastd` running alongside.
 
 #### Generating TypeScript types
 

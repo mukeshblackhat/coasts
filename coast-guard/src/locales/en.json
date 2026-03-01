@@ -483,6 +483,7 @@
   "docker.restartWarning": "Docker Desktop will restart. Running containers may be interrupted.",
   "docker.notAvailable": "Docker Desktop is required to adjust memory.",
   "docker.adjustError": "Failed to adjust memory: {{error}}",
+  "docker.notRunning": "Docker not running",
 
   "docs.title": "Documentation",
   "docs.backToProjects": "Back to projects",

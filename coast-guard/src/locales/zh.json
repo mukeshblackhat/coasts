@@ -468,6 +468,7 @@
   "docker.restartWarning": "Docker Desktop 将重启。运行中的容器可能会被中断。",
   "docker.notAvailable": "调整内存需要 Docker Desktop。",
   "docker.adjustError": "调整内存失败：{{error}}",
+  "docker.notRunning": "Docker 未运行",
 
   "docs.title": "文档",
   "docs.backToProjects": "返回项目列表",

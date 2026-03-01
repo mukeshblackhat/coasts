@@ -468,6 +468,7 @@
   "docker.restartWarning": "Docker Desktopが再起動します。実行中のコンテナが中断される可能性があります。",
   "docker.notAvailable": "メモリの調整にはDocker Desktopが必要です。",
   "docker.adjustError": "メモリの調整に失敗しました: {{error}}",
+  "docker.notRunning": "Docker が起動していません",
 
   "docs.title": "ドキュメント",
   "docs.backToProjects": "プロジェクト一覧に戻る",

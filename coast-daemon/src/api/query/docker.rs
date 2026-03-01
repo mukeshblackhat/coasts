@@ -35,22 +35,23 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/docker/open-settings", post(open_docker_settings))
 }
 
-async fn docker_info(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<DockerInfoResponse>, (StatusCode, Json<serde_json::Value>)> {
-    let docker = state.docker.as_ref().ok_or_else(|| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({ "error": "Docker not available" })),
-        )
-    })?;
+async fn docker_info(State(state): State<Arc<AppState>>) -> Json<DockerInfoResponse> {
+    let disconnected = Json(DockerInfoResponse {
+        connected: false,
+        mem_total_bytes: 0,
+        cpus: 0,
+        os: String::new(),
+        server_version: String::new(),
+        can_adjust: false,
+    });
 
-    let info = docker.info().await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": format!("Failed to query Docker: {e}") })),
-        )
-    })?;
+    let Some(docker) = state.docker.as_ref() else {
+        return disconnected;
+    };
+
+    let Ok(info) = docker.info().await else {
+        return disconnected;
+    };
 
     let mem_total_bytes = info.mem_total.unwrap_or(0).max(0) as u64;
     let cpus = info.ncpu.unwrap_or(0).max(0) as u64;
@@ -58,13 +59,14 @@ async fn docker_info(
     let server_version = info.server_version.unwrap_or_default();
     let can_adjust = can_adjust_memory().await;
 
-    Ok(Json(DockerInfoResponse {
+    Json(DockerInfoResponse {
+        connected: true,
         mem_total_bytes,
         cpus,
         os,
         server_version,
         can_adjust,
-    }))
+    })
 }
 
 async fn open_docker_settings(

@@ -4,9 +4,17 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+name = "coast_daemon"
+path = "src/lib.rs"
+
 [[bin]]
 name = "coastd"
 path = "src/main.rs"
+
+[[bin]]
+name = "coastd-dev"
+path = "src/bin/coastd-dev.rs"
 
 [dependencies]
 coast-core = { path = "../coast-core" }

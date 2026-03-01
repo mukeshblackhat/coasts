@@ -1373,7 +1373,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_docker_info_returns_503_without_docker() {
+    async fn test_docker_info_disconnected_without_docker() {
         let app = test_app();
         let response = app
             .oneshot(
@@ -1385,7 +1385,12 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["connected"], false);
     }
 
     #[tokio::test]

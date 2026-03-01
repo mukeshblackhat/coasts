@@ -205,30 +205,21 @@ impl AppState {
     }
 }
 
-/// The default socket path: `~/.coast/coastd.sock`.
+/// The default socket path: `$COAST_HOME/coastd.sock`.
 pub fn default_socket_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| {
-        CoastError::io_simple("cannot determine home directory. Set $HOME and try again.")
-    })?;
-    Ok(home.join(".coast").join("coastd.sock"))
+    Ok(coast_core::artifact::coast_home()?.join("coastd.sock"))
 }
 
-/// The default PID file path: `~/.coast/coastd.pid`.
+/// The default PID file path: `$COAST_HOME/coastd.pid`.
 pub fn default_pid_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| {
-        CoastError::io_simple("cannot determine home directory. Set $HOME and try again.")
-    })?;
-    Ok(home.join(".coast").join("coastd.pid"))
+    Ok(coast_core::artifact::coast_home()?.join("coastd.pid"))
 }
 
-/// Ensure the `~/.coast/` directory exists.
+/// Ensure the coast home directory exists.
 pub fn ensure_coast_dir() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| {
-        CoastError::io_simple("cannot determine home directory. Set $HOME and try again.")
-    })?;
-    let coast_dir = home.join(".coast");
+    let coast_dir = coast_core::artifact::coast_home()?;
     std::fs::create_dir_all(&coast_dir).map_err(|e| CoastError::Io {
-        message: format!("failed to create ~/.coast/ directory: {e}"),
+        message: format!("failed to create {} directory: {e}", coast_dir.display()),
         path: coast_dir.clone(),
         source: Some(e),
     })?;

@@ -453,6 +453,7 @@
   "docker.restartWarning": "Docker Desktop будет перезапущен. Запущенные контейнеры могут быть прерваны.",
   "docker.notAvailable": "Для настройки памяти требуется Docker Desktop.",
   "docker.adjustError": "Ошибка настройки памяти: {{error}}",
+  "docker.notRunning": "Docker не запущен",
 
   "docs.title": "Документация",
   "docs.backToProjects": "Вернуться к проектам",

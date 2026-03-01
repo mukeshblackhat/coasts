@@ -3,11 +3,17 @@
 /// If run from within a known project directory, navigates directly to
 /// that project's page. Detects the project by matching the cwd against
 /// `project_root` paths from existing build manifests.
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Args;
 use colored::Colorize;
+use rust_i18n::t;
 
-const DEFAULT_API_PORT: u16 = 31415;
+fn default_api_port() -> u16 {
+    std::env::var("COAST_API_PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(31415)
+}
 const RESOLVER_PATH: &str = "/etc/resolver/localcoast";
 
 /// Arguments for `coast ui`.
@@ -20,9 +26,17 @@ pub struct UiArgs {
 
 /// Execute the `coast ui` command.
 pub async fn execute(args: &UiArgs) -> Result<()> {
-    let port = args.port.unwrap_or(DEFAULT_API_PORT);
+    let sock = super::socket_path();
+    if tokio::net::UnixStream::connect(&sock).await.is_err() {
+        bail!("{}", t!("error.daemon_not_running"));
+    }
 
-    let host = if std::path::Path::new(RESOLVER_PATH).exists() {
+    let port = args.port.unwrap_or_else(default_api_port);
+
+    // Use localcoast hostname only when the resolver exists AND we're on the
+    // default port (production). Dev mode runs on a different port and its DNS
+    // server isn't registered in /etc/resolver, so always use localhost there.
+    let host = if port == 31415 && std::path::Path::new(RESOLVER_PATH).exists() {
         "localcoast"
     } else {
         "localhost"
@@ -49,12 +63,11 @@ pub async fn execute(args: &UiArgs) -> Result<()> {
     Ok(())
 }
 
-/// Scan ~/.coast/images/*/latest/manifest.json for project roots and find
+/// Scan $COAST_HOME/images/*/latest/manifest.json for project roots and find
 /// which project (if any) the current working directory belongs to.
 fn detect_project_from_cwd() -> Option<String> {
     let cwd = std::env::current_dir().ok()?;
-    let home = dirs::home_dir()?;
-    let images_dir = home.join(".coast").join("images");
+    let images_dir = coast_core::artifact::coast_home().ok()?.join("images");
     let entries = std::fs::read_dir(&images_dir).ok()?;
 
     let mut projects: Vec<(String, std::path::PathBuf)> = Vec::new();
@@ -123,5 +136,17 @@ mod tests {
     fn test_ui_custom_port() {
         let cli = TestCli::try_parse_from(["test", "--port", "8080"]).unwrap();
         assert_eq!(cli.args.port, Some(8080));
+    }
+
+    #[tokio::test]
+    async fn test_ui_fails_when_daemon_not_running() {
+        let args = UiArgs { port: None };
+        let result = execute(&args).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("coast daemon start"),
+            "error should suggest starting the daemon, got: {err}"
+        );
     }
 }

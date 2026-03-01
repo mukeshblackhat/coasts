@@ -331,6 +331,7 @@ pub struct TerminalSessionInit {
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export)]
 pub struct DockerInfoResponse {
+    pub connected: bool,
     pub mem_total_bytes: u64,
     pub cpus: u64,
     pub os: String,

@@ -116,6 +116,10 @@ export function useCoastEvents(): void {
             void qc.invalidateQueries({ queryKey: ['projectGit'] });
           }
 
+          if (evt.event === 'docker.status_changed') {
+            void qc.invalidateQueries({ queryKey: ['dockerInfo'] });
+          }
+
           if (evt.event === 'agent_shell.spawned') {
             window.dispatchEvent(new CustomEvent('coast:agent-shell-changed', { detail: evt }));
           }

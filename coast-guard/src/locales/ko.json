@@ -468,6 +468,7 @@
   "docker.restartWarning": "Docker Desktop이 재시작됩니다. 실행 중인 컨테이너가 중단될 수 있습니다.",
   "docker.notAvailable": "메모리 조정에는 Docker Desktop이 필요합니다.",
   "docker.adjustError": "메모리 조정 실패: {{error}}",
+  "docker.notRunning": "Docker가 실행되지 않음",
 
   "docs.title": "문서",
   "docs.backToProjects": "프로젝트 목록으로 돌아가기",

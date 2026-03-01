@@ -156,4 +156,6 @@ pub enum CoastEvent {
         project: String,
         shell_id: i64,
     },
+    #[serde(rename = "docker.status_changed")]
+    DockerStatusChanged { connected: bool },
 }

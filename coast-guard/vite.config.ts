@@ -9,6 +9,8 @@ logger.error = (msg, options) => {
   _origError(msg, options);
 };
 
+const apiPort = process.env.VITE_API_PORT || '31415';
+
 export default defineConfig({
   customLogger: logger,
   plugins: [react(), tailwindcss()],
@@ -16,7 +18,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:31415',
+        target: `http://localhost:${apiPort}`,
         changeOrigin: true,
         ws: true,
         configure: (proxy) => {

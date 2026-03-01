@@ -4,9 +4,17 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+name = "coast_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "coast"
 path = "src/main.rs"
+
+[[bin]]
+name = "coast-dev"
+path = "src/bin/coast-dev.rs"
 
 [dependencies]
 coast-core = { path = "../coast-core" }

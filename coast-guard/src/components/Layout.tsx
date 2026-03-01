@@ -32,7 +32,7 @@ export default function Layout() {
             <img src={logoUrl} alt={t('app.title')} className="h-8" />
           </Link>
           <div className="flex items-center gap-1">
-            {dockerInfo != null && (
+            {dockerInfo != null && dockerInfo.connected && (
               <button
                 onClick={handleOpenDockerSettings}
                 className="h-8 px-2.5 inline-flex items-center gap-2.5 rounded-lg text-xs text-subtle-ui hover:bg-white/30 dark:hover:bg-white/10 transition-colors cursor-pointer"
@@ -43,6 +43,15 @@ export default function Layout() {
                   {t('docker.label')}: {formatBytes(dockerInfo.mem_total_bytes)}
                 </span>
               </button>
+            )}
+            {dockerInfo != null && !dockerInfo.connected && (
+              <span
+                className="h-8 px-2.5 inline-flex items-center gap-2 rounded-lg text-xs text-red-400"
+                title={t('docker.notRunning')}
+              >
+                <DockerIcon size={18} />
+                <span className="font-medium">{t('docker.notRunning')}</span>
+              </span>
             )}
             <LanguagePicker />
             <button

@@ -1023,6 +1023,7 @@ fn test_config_language_changed_event_serialization() {
 #[test]
 fn test_docker_info_response_serialization() {
     let resp = DockerInfoResponse {
+        connected: true,
         mem_total_bytes: 8_589_934_592,
         cpus: 4,
         os: "Docker Desktop".to_string(),

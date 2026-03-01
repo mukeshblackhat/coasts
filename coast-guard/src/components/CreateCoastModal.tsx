@@ -94,6 +94,8 @@ export default function CreateCoastModal({
     const trimmedName = coastName.trim();
     const worktreeArg = resolvedWorktree ?? null;
     let closed = false;
+    let progressCount = 0;
+
     const closeOnce = () => {
       if (!closed) {
         closed = true;
@@ -110,20 +112,32 @@ export default function CreateCoastModal({
         ? undefined
         : selectedCoastfileType,
       forceRemoveDangling,
-      () => closeOnce(),
+      () => {
+        progressCount++;
+        // Close after the 3rd progress event — past the dangling-check
+        // window (dangling errors arrive after exactly 2 progress events).
+        if (progressCount >= 3) closeOnce();
+      },
     ).then((result) => {
-      if (result.error?.error?.includes('dangling Docker container')) {
+      if (result.error) {
+        if (closed) return;
+        const msg = result.error.error ?? JSON.stringify(result.error);
         setCreating(false);
-        setDanglingDetected(true);
-        setError(result.error.error);
-      } else if (!closed) {
+        if (msg.includes('dangling Docker container')) {
+          setDanglingDetected(true);
+        }
+        setError(msg);
+      } else {
         closeOnce();
       }
     }).catch((err: unknown) => {
-      if (!closed) {
-        setCreating(false);
-        setError(String(err));
+      if (closed) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      setCreating(false);
+      if (msg.includes('dangling Docker container')) {
+        setDanglingDetected(true);
       }
+      setError(msg);
     });
   };
 

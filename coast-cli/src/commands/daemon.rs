@@ -58,30 +58,35 @@ struct DaemonStatus {
 }
 
 fn pid_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("Could not determine home directory")?;
-    Ok(home.join(".coast").join("coastd.pid"))
+    Ok(coast_core::artifact::coast_home()?.join("coastd.pid"))
 }
 
 fn socket_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("Could not determine home directory")?;
-    Ok(home.join(".coast").join("coastd.sock"))
+    Ok(coast_core::artifact::coast_home()?.join("coastd.sock"))
 }
 
 fn log_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("Could not determine home directory")?;
-    Ok(home.join(".coast").join("coastd.log"))
+    Ok(coast_core::artifact::coast_home()?.join("coastd.log"))
 }
 
-/// Find the `coastd` binary. Checks next to the current `coast` executable
-/// first (same directory), then falls back to bare `"coastd"` for PATH lookup.
+/// Find the matching `coastd` binary. When the current executable is
+/// `coast-dev`, looks for `coastd-dev`; when it's `coast`, looks for `coastd`.
+/// Checks next to the current executable first, then falls back to PATH.
 fn resolve_coastd_path() -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
+        let exe_name = exe.file_name().unwrap_or_default().to_string_lossy();
+        let daemon_name = if let Some(suffix) = exe_name.strip_prefix("coast") {
+            format!("coastd{suffix}")
+        } else {
+            "coastd".to_string()
+        };
         if let Some(dir) = exe.parent() {
-            let sibling = dir.join("coastd");
+            let sibling = dir.join(&daemon_name);
             if sibling.exists() {
                 return sibling;
             }
         }
+        return PathBuf::from(daemon_name);
     }
     PathBuf::from("coastd")
 }
@@ -142,7 +147,11 @@ async fn execute_status() -> Result<()> {
             let sock = socket_path()?;
             println!("  socket: {}", sock.display());
         }
-        println!("  api:    http://localhost:31415");
+        let api_port: u16 = std::env::var("COAST_API_PORT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(31415);
+        println!("  api:    http://localhost:{api_port}");
     } else {
         println!("{} {}", "coastd".bold(), "is not running".red().bold());
         if status.pid.is_some() {
@@ -263,10 +272,12 @@ async fn execute_start() -> Result<()> {
             }
         }
         if start.elapsed() > timeout {
+            let log = log_path().unwrap_or_default();
             bail!(
                 "coastd did not start within 5 seconds. \
-                 Check ~/.coast/coastd.log for errors. \
-                 Spawned process PID was {child_pid}."
+                 Check {} for errors. \
+                 Spawned process PID was {child_pid}.",
+                log.display()
             );
         }
         tokio::time::sleep(poll_interval).await;
