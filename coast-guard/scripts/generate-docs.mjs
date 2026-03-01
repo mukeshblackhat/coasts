@@ -13,6 +13,8 @@ const DOCS_ROOT = join(__dirname, "..", "..", "docs");
 const ROOT_ASSETS_DIR = join(__dirname, "..", "..", "assets");
 const OUT_DIR = join(__dirname, "..", "src", "generated");
 const OUT_FILE = join(OUT_DIR, "docs-manifest.json");
+const DOC_ORDER_FILE = join(DOCS_ROOT, "doc_ordering.txt");
+const DOC_ORDER_OUT = join(OUT_DIR, "doc-order.json");
 const DOCS_ASSETS_OUT_DIR = join(__dirname, "..", "public", "docs-assets");
 
 const LOCALES = ["en", "zh", "ja", "ko", "ru", "pt", "es"];
@@ -156,6 +158,21 @@ async function main() {
   await rm(DOCS_ASSETS_OUT_DIR, { recursive: true, force: true });
   if (await exists(ROOT_ASSETS_DIR)) {
     await copyDirRecursive(ROOT_ASSETS_DIR, DOCS_ASSETS_OUT_DIR);
+  }
+
+  // Build doc-order.json from docs/doc_ordering.txt if it exists.
+  if (await exists(DOC_ORDER_FILE)) {
+    const raw = await readFile(DOC_ORDER_FILE, "utf-8");
+    const lines = raw
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#"));
+    const order = {};
+    lines.forEach((path, i) => {
+      order[path] = (i + 1) * 10;
+    });
+    await writeFile(DOC_ORDER_OUT, JSON.stringify(order, null, 2) + "\n", "utf-8");
+    console.log(`Generated ${DOC_ORDER_OUT} — ${lines.length} entries`);
   }
 
   const totalFiles = Object.values(manifest.locales).reduce(

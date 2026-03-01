@@ -3,6 +3,9 @@ import { File, CaretRight, FolderOpen } from '@phosphor-icons/react';
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/endpoints';
+import _DOC_ORDER from '../generated/doc-order.json';
+
+const DOC_ORDER: Record<string, number> = _DOC_ORDER;
 
 export interface TreeNode {
   name: string;
@@ -15,45 +18,6 @@ interface DocsSidebarProps {
   tree: TreeNode[];
   activePath: string;
 }
-
-const DOC_ORDER: Record<string, number> = {
-  'README.md': 10,
-  'GETTING_STARTED.md': 20,
-  'SKILLS_FOR_HOST_AGENTS.md': 22,
-  'concepts_and_terminology/README.md': 25,
-  'concepts_and_terminology/COASTS.md': 26,
-  'concepts_and_terminology/FILESYSTEM.md': 27,
-  'concepts_and_terminology/DAEMON.md': 28,
-  'concepts_and_terminology/CLI.md': 29,
-  'concepts_and_terminology/COASTGUARD.md': 30,
-  'concepts_and_terminology/PORTS.md': 31,
-  'concepts_and_terminology/PRIMARY_PORT_AND_DNS.md': 32,
-  'concepts_and_terminology/ASSIGN.md': 33,
-  'concepts_and_terminology/CHECKOUT.md': 34,
-  'concepts_and_terminology/LOOKUP.md': 35,
-  'concepts_and_terminology/VOLUMES.md': 36,
-  'concepts_and_terminology/SHARED_SERVICES.md': 37,
-  'concepts_and_terminology/SECRETS.md': 38,
-  'concepts_and_terminology/BUILDS.md': 39,
-  'concepts_and_terminology/COASTFILE_TYPES.md': 40,
-  'concepts_and_terminology/RUNTIMES_AND_SERVICES.md': 41,
-  'concepts_and_terminology/BARE_SERVICES.md': 42,
-  'concepts_and_terminology/LOGS.md': 43,
-  'concepts_and_terminology/EXEC_AND_DOCKER.md': 44,
-  'concepts_and_terminology/AGENT_SHELLS.md': 45,
-  'concepts_and_terminology/MCP_SERVERS.md': 46,
-  'coastfiles/README.md': 47,
-  'coastfiles/PROJECT.md': 48,
-  'coastfiles/PORTS.md': 49,
-  'coastfiles/SHARED_SERVICES.md': 50,
-  'coastfiles/SERVICES.md': 51,
-  'coastfiles/SECRETS.md': 52,
-  'coastfiles/VOLUMES.md': 53,
-  'coastfiles/ASSIGN.md': 54,
-  'coastfiles/INHERITANCE.md': 55,
-  'coastfiles/AGENT_SHELL.md': 56,
-  'coastfiles/MCP.md': 57,
-};
 
 const DOC_TITLE_KEYS: Record<string, string> = {
   'README.md': 'docs.nav.overview',
