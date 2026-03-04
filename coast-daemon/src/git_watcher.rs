@@ -39,10 +39,10 @@ fn resolve_project_root(project: &str) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-/// Read the worktree_dir from the project's cached Coastfile (default ".coasts").
+/// Read the worktree_dir from the project's cached Coastfile (default ".worktrees").
 fn read_worktree_dir(project: &str) -> String {
     let Some(home) = dirs::home_dir() else {
-        return ".coasts".to_string();
+        return ".worktrees".to_string();
     };
     let cf_path = home
         .join(".coast")
@@ -53,7 +53,7 @@ fn read_worktree_dir(project: &str) -> String {
     if let Ok(cf) = coast_core::coastfile::Coastfile::from_file(&cf_path) {
         return cf.worktree_dir;
     }
-    ".coasts".to_string()
+    ".worktrees".to_string()
 }
 
 /// Read the contents of `.git/HEAD` for a project root.
@@ -229,7 +229,8 @@ pub async fn reconcile_orphaned_worktrees(state: &Arc<AppState>) {
         let Some(project_root) = resolve_project_root(project) else {
             continue;
         };
-        let wt_dir = read_worktree_dir(project);
+        let wt_dir = crate::handlers::assign::detect_worktree_dir_from_git(&project_root)
+            .unwrap_or_else(|| read_worktree_dir(project));
         let listing = list_worktree_dirs(&project_root, &wt_dir)
             .await
             .unwrap_or_default();
@@ -314,7 +315,9 @@ pub fn spawn_git_watcher(state: Arc<AppState>) {
                     }
                 }
 
-                let wt_dir = read_worktree_dir(project);
+                let wt_dir =
+                    crate::handlers::assign::detect_worktree_dir_from_git(&entry.project_root)
+                        .unwrap_or_else(|| read_worktree_dir(project));
                 if let Some(listing) = list_worktree_dirs(&entry.project_root, &wt_dir).await {
                     if entry.last_worktree_listing.as_ref() != Some(&listing) {
                         if entry.last_worktree_listing.is_some() {

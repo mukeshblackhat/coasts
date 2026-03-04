@@ -61,7 +61,7 @@ root = "../my-project"
 
 ### `worktree_dir`
 
-Coast インスタンス用に git worktree が作成されるディレクトリ。デフォルトは `".coasts"`。相対パスはプロジェクトルートを基準に解決されます。
+Coast インスタンス用に git worktree が作成されるディレクトリ。デフォルトは `".worktrees"`。実行時に Coast は既存の git worktree からディレクトリを自動検出し（`git worktree list` を使用）、デフォルトより優先します。相対パスはプロジェクトルートを基準に解決されます。
 
 ```toml
 [coast]

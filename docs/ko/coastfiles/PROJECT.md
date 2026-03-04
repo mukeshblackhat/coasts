@@ -61,7 +61,7 @@ root = "../my-project"
 
 ### `worktree_dir`
 
-Coast 인스턴스를 위한 git worktree가 생성되는 디렉터리입니다. 기본값은 `".coasts"`입니다. 상대 경로는 프로젝트 루트를 기준으로 해석됩니다.
+Coast 인스턴스를 위한 git worktree가 생성되는 디렉터리입니다. 기본값은 `".worktrees"`입니다. 런타임에 Coast는 기존 git worktree에서 디렉터리를 자동 감지하여(`git worktree list` 사용) 기본값보다 우선합니다. 상대 경로는 프로젝트 루트를 기준으로 해석됩니다.
 
 ```toml
 [coast]

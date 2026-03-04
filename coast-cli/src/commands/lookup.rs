@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn test_detect_worktree_from_paths_in_worktree() {
         let tmp = tempfile::tempdir().unwrap();
-        let wt_base = tmp.path().join(".coasts");
+        let wt_base = tmp.path().join(".worktrees");
         let feat_dir = wt_base.join("feature-alpha").join("src");
         std::fs::create_dir_all(&feat_dir).unwrap();
 
@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn test_detect_worktree_from_paths_in_worktree_root() {
         let tmp = tempfile::tempdir().unwrap();
-        let wt_base = tmp.path().join(".coasts");
+        let wt_base = tmp.path().join(".worktrees");
         let feat_dir = wt_base.join("feature-beta");
         std::fs::create_dir_all(&feat_dir).unwrap();
 
@@ -265,7 +265,7 @@ mod tests {
     fn test_detect_worktree_from_paths_project_root() {
         let tmp = tempfile::tempdir().unwrap();
         let project_root = tmp.path();
-        let wt_base = project_root.join(".coasts");
+        let wt_base = project_root.join(".worktrees");
         std::fs::create_dir_all(&wt_base).unwrap();
 
         let result = detect_worktree_from_paths(project_root, &wt_base).unwrap();
@@ -276,7 +276,7 @@ mod tests {
     fn test_detect_worktree_from_paths_no_worktree_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let project_root = tmp.path();
-        let wt_base = project_root.join(".coasts");
+        let wt_base = project_root.join(".worktrees");
         // Don't create wt_base — it doesn't exist
 
         let result = detect_worktree_from_paths(project_root, &wt_base).unwrap();
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn test_detect_worktree_from_paths_inside_worktree_dir_but_not_specific() {
         let tmp = tempfile::tempdir().unwrap();
-        let wt_base = tmp.path().join(".coasts");
+        let wt_base = tmp.path().join(".worktrees");
         std::fs::create_dir_all(&wt_base).unwrap();
 
         let result = detect_worktree_from_paths(&wt_base, &wt_base).unwrap();
@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn test_detect_worktree_from_paths_deeply_nested_subdir() {
         let tmp = tempfile::tempdir().unwrap();
-        let wt_base = tmp.path().join(".coasts");
+        let wt_base = tmp.path().join(".worktrees");
         let deep = wt_base.join("feat").join("a").join("b").join("c");
         std::fs::create_dir_all(&deep).unwrap();
 

@@ -54,7 +54,7 @@ pub struct Coastfile {
     /// Egress port declarations (logical_name -> host port).
     /// When non-empty, enables host connectivity from inner compose services.
     pub egress: HashMap<String, u16>,
-    /// Directory for git worktrees, relative to project root (default: ".coasts").
+    /// Directory for git worktrees, relative to project root (default: ".worktrees").
     pub worktree_dir: String,
     /// Services and volumes to omit from the compose file.
     pub omit: OmitConfig,
@@ -244,7 +244,7 @@ impl Coastfile {
             project_root: project_root.to_path_buf(),
             assign: AssignConfig::default(),
             egress: HashMap::new(),
-            worktree_dir: ".coasts".to_string(),
+            worktree_dir: ".worktrees".to_string(),
             omit: OmitConfig::default(),
             mcp_servers: vec![],
             mcp_clients: vec![],
@@ -691,7 +691,7 @@ impl Coastfile {
             worktree_dir: raw
                 .coast
                 .worktree_dir
-                .unwrap_or_else(|| ".coasts".to_string()),
+                .unwrap_or_else(|| ".worktrees".to_string()),
             omit,
             mcp_servers,
             mcp_clients,

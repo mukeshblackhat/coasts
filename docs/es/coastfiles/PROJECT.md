@@ -61,7 +61,7 @@ Esto es poco común. La mayoría de los proyectos mantienen el Coastfile en la r
 
 ### `worktree_dir`
 
-Directorio donde se crean los worktrees de git para instancias de Coast. Por defecto es `".coasts"`. Las rutas relativas se resuelven contra la raíz del proyecto.
+Directorio donde se crean los worktrees de git para instancias de Coast. Por defecto es `".worktrees"`. En tiempo de ejecución, Coast detecta automáticamente el directorio a partir de worktrees git existentes (mediante `git worktree list`) y lo prefiere sobre el valor predeterminado. Las rutas relativas se resuelven contra la raíz del proyecto.
 
 ```toml
 [coast]

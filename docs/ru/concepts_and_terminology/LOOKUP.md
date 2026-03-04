@@ -104,7 +104,7 @@ Lookup поднимается вверх от текущего рабочего 
 1. Если ваш cwd находится под `{project_root}/{worktree_dir}/{name}/...`, lookup находит экземпляры, назначенные этому worktree.
 2. Если ваш cwd — корень проекта (или любой каталог вне worktree), lookup находит экземпляры **без назначенного worktree** — те, которые всё ещё указывают на корень проекта.
 
-Это означает, что lookup работает и из подкаталогов. Если вы находитесь в `my-app/.coasts/feature-oauth/src/api/`, lookup всё равно определит `feature-oauth` как worktree.
+Это означает, что lookup работает и из подкаталогов. Если вы находитесь в `my-app/.worktrees/feature-oauth/src/api/`, lookup всё равно определит `feature-oauth` как worktree.
 
 ## Exit Codes
 

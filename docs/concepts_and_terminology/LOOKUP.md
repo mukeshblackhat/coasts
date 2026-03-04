@@ -104,7 +104,7 @@ Lookup walks up from the current working directory to find the nearest Coastfile
 1. If your cwd is under `{project_root}/{worktree_dir}/{name}/...`, lookup finds instances assigned to that worktree.
 2. If your cwd is the project root (or any directory not inside a worktree), lookup finds instances with **no worktree assigned** — those still pointed at the project root.
 
-This means lookup works from subdirectories too. If you are in `my-app/.coasts/feature-oauth/src/api/`, lookup still resolves `feature-oauth` as the worktree.
+This means lookup works from subdirectories too. If you are in `my-app/.worktrees/feature-oauth/src/api/`, lookup still resolves `feature-oauth` as the worktree.
 
 ## Exit Codes
 

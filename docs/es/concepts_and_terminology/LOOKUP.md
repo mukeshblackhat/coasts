@@ -104,7 +104,7 @@ Lookup recorre hacia arriba desde el directorio de trabajo actual para encontrar
 1. Si tu cwd está bajo `{project_root}/{worktree_dir}/{name}/...`, lookup encuentra instancias asignadas a ese worktree.
 2. Si tu cwd es la raíz del proyecto (o cualquier directorio que no esté dentro de un worktree), lookup encuentra instancias **sin worktree asignado** — aquellas que aún apuntan a la raíz del proyecto.
 
-Esto significa que lookup también funciona desde subdirectorios. Si estás en `my-app/.coasts/feature-oauth/src/api/`, lookup aún resuelve `feature-oauth` como el worktree.
+Esto significa que lookup también funciona desde subdirectorios. Si estás en `my-app/.worktrees/feature-oauth/src/api/`, lookup aún resuelve `feature-oauth` como el worktree.
 
 ## Códigos de Salida
 

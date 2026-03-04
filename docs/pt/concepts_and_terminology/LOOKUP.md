@@ -104,7 +104,7 @@ O Lookup sobe a partir do diretório de trabalho atual para encontrar o Coastfil
 1. Se seu cwd estiver sob `{project_root}/{worktree_dir}/{name}/...`, o lookup encontra instâncias atribuídas a essa worktree.
 2. Se seu cwd for a raiz do projeto (ou qualquer diretório que não esteja dentro de uma worktree), o lookup encontra instâncias **sem worktree atribuída** — aquelas ainda apontadas para a raiz do projeto.
 
-Isso significa que o lookup funciona também a partir de subdiretórios. Se você estiver em `my-app/.coasts/feature-oauth/src/api/`, o lookup ainda resolve `feature-oauth` como a worktree.
+Isso significa que o lookup funciona também a partir de subdiretórios. Se você estiver em `my-app/.worktrees/feature-oauth/src/api/`, o lookup ainda resolve `feature-oauth` como a worktree.
 
 ## Exit Codes
 

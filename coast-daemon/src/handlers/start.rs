@@ -221,12 +221,16 @@ pub async fn handle(
                         .join(&req.project)
                         .join("latest")
                         .join("coastfile.toml");
-                    cf_path
+                    let coastfile_default = cf_path
                         .exists()
                         .then(|| coast_core::coastfile::Coastfile::from_file(&cf_path).ok())
                         .flatten()
                         .map(|cf| cf.worktree_dir)
-                        .unwrap_or_else(|| ".coasts".to_string())
+                        .unwrap_or_else(|| ".worktrees".to_string());
+                    // Prefer detection from existing git worktrees over the Coastfile default.
+                    super::assign::read_project_root(&req.project)
+                        .and_then(|root| super::assign::detect_worktree_dir_from_git(&root))
+                        .unwrap_or(coastfile_default)
                 };
                 let mount_src = match instance.worktree_name.as_deref() {
                     Some(wt) => format!("/host-project/{wt_dir}/{wt}"),

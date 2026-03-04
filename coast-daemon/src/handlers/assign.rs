@@ -55,7 +55,7 @@ fn read_assign_config(project: &str) -> AssignConfig {
     AssignConfig::default()
 }
 
-/// Read the worktree directory from the Coastfile (default: ".coasts").
+/// Read the worktree directory from the Coastfile (default: ".worktrees").
 fn read_worktree_dir(project: &str) -> String {
     let home = dirs::home_dir().unwrap_or_default();
     let coastfile_path = home
@@ -69,7 +69,96 @@ fn read_worktree_dir(project: &str) -> String {
             return cf.worktree_dir;
         }
     }
-    ".coasts".to_string()
+    ".worktrees".to_string()
+}
+
+/// Detect the worktree parent directory from existing git worktrees.
+///
+/// Runs `git worktree list --porcelain`, collects non-main worktree paths,
+/// and returns the common parent expressed as a path relative to the project root.
+/// Returns `None` if there are no non-main worktrees or no common parent can be derived.
+pub fn detect_worktree_dir_from_git(project_root: &std::path::Path) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(project_root)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let canonical_root = project_root.canonicalize().ok()?;
+
+    let mut worktree_paths: Vec<std::path::PathBuf> = Vec::new();
+    for line in stdout.lines() {
+        if let Some(path_str) = line.strip_prefix("worktree ") {
+            let path = std::path::PathBuf::from(path_str);
+            let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+            if canonical != canonical_root {
+                worktree_paths.push(canonical);
+            }
+        }
+    }
+
+    if worktree_paths.is_empty() {
+        return None;
+    }
+
+    // Find the common parent of all non-main worktree paths.
+    let mut common = worktree_paths[0].parent()?.to_path_buf();
+    for wt in &worktree_paths[1..] {
+        let parent = wt.parent()?;
+        while !parent.starts_with(&common) {
+            if !common.pop() {
+                return None;
+            }
+        }
+        common = {
+            let mut prefix = std::path::PathBuf::new();
+            for (a, b) in common.components().zip(parent.components()) {
+                if a == b {
+                    prefix.push(a);
+                } else {
+                    break;
+                }
+            }
+            prefix
+        };
+    }
+
+    // Express the common parent relative to the project root.
+    if let Ok(relative) = common.strip_prefix(&canonical_root) {
+        let rel_str = relative.to_string_lossy().to_string();
+        if rel_str.is_empty() {
+            return None;
+        }
+        return Some(rel_str);
+    }
+
+    // Common parent is outside the project root -- build a ../ relative path.
+    let root_components: Vec<_> = canonical_root.components().collect();
+    let common_components: Vec<_> = common.components().collect();
+    let shared = root_components
+        .iter()
+        .zip(common_components.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+    if shared == 0 {
+        return None;
+    }
+    let ups = root_components.len() - shared;
+    let mut relative = std::path::PathBuf::new();
+    for _ in 0..ups {
+        relative.push("..");
+    }
+    for component in &common_components[shared..] {
+        relative.push(component);
+    }
+    let rel_str = relative.to_string_lossy().to_string();
+    if rel_str.is_empty() {
+        return None;
+    }
+    Some(rel_str)
 }
 
 /// Check if this project has a compose file configured.
@@ -573,7 +662,8 @@ pub async fn handle_with_status(
 
             if let Some(ref root) = project_root {
                 {
-                    let wt_dir = read_worktree_dir(&req.project);
+                    let wt_dir = detect_worktree_dir_from_git(root)
+                        .unwrap_or_else(|| read_worktree_dir(&req.project));
                     let worktree_path = root.join(&wt_dir).join(&req.worktree);
                     if !worktree_path.exists() {
                         emit(
@@ -1680,5 +1770,92 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let marker = dir.path().join(".coast-synced");
         assert!(!marker.exists(), "marker should not exist in fresh dir");
+    }
+
+    #[test]
+    fn test_detect_worktree_dir_no_worktrees() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .env("GIT_AUTHOR_NAME", "test")
+                .env("GIT_AUTHOR_EMAIL", "test@test.com")
+                .env("GIT_COMMITTER_NAME", "test")
+                .env("GIT_COMMITTER_EMAIL", "test@test.com")
+                .output()
+                .expect("git command failed to start");
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+
+        git(&["init", "-b", "main"]);
+        git(&["commit", "--allow-empty", "-m", "init"]);
+
+        let result = super::detect_worktree_dir_from_git(root);
+        assert_eq!(result, None, "should return None when no worktrees exist");
+    }
+
+    #[test]
+    fn test_detect_worktree_dir_with_worktrees() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .env("GIT_AUTHOR_NAME", "test")
+                .env("GIT_AUTHOR_EMAIL", "test@test.com")
+                .env("GIT_COMMITTER_NAME", "test")
+                .env("GIT_COMMITTER_EMAIL", "test@test.com")
+                .output()
+                .expect("git command failed to start");
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+
+        git(&["init", "-b", "main"]);
+        git(&["commit", "--allow-empty", "-m", "init"]);
+        git(&["branch", "feat-a"]);
+        git(&["branch", "feat-b"]);
+
+        let wt_parent = root.join(".worktrees");
+        std::fs::create_dir_all(&wt_parent).unwrap();
+        git(&[
+            "worktree",
+            "add",
+            &wt_parent.join("feat-a").to_string_lossy(),
+            "feat-a",
+        ]);
+        git(&[
+            "worktree",
+            "add",
+            &wt_parent.join("feat-b").to_string_lossy(),
+            "feat-b",
+        ]);
+
+        let result = super::detect_worktree_dir_from_git(root);
+        assert_eq!(
+            result,
+            Some(".worktrees".to_string()),
+            "should detect .worktrees as the common parent"
+        );
+    }
+
+    #[test]
+    fn test_detect_worktree_dir_non_git() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = super::detect_worktree_dir_from_git(dir.path());
+        assert_eq!(result, None, "should return None for non-git directory");
     }
 }

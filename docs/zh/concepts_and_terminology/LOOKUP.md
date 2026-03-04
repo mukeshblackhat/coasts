@@ -104,7 +104,7 @@ Lookup 会从当前工作目录向上查找最近的 Coastfile，然后确定你
 1. 如果你的 cwd 位于 `{project_root}/{worktree_dir}/{name}/...` 之下，lookup 会找到分配给该 worktree 的实例。
 2. 如果你的 cwd 位于项目根目录（或任何不在 worktree 内的目录），lookup 会找到 **未分配 worktree** 的实例——也就是仍然指向项目根目录的实例。
 
-这意味着 lookup 也能从子目录工作。如果你在 `my-app/.coasts/feature-oauth/src/api/` 中，lookup 仍会将 `feature-oauth` 解析为 worktree。
+这意味着 lookup 也能从子目录工作。如果你在 `my-app/.worktrees/feature-oauth/src/api/` 中，lookup 仍会将 `feature-oauth` 解析为 worktree。
 
 ## Exit Codes
 

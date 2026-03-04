@@ -104,7 +104,7 @@ Lookup은 현재 작업 디렉터리에서 위로 올라가며 가장 가까운 
 1. cwd가 `{project_root}/{worktree_dir}/{name}/...` 아래에 있다면, lookup은 해당 worktree에 할당된 인스턴스를 찾습니다.
 2. cwd가 프로젝트 루트(또는 worktree 내부가 아닌 어떤 디렉터리)라면, lookup은 **worktree가 할당되지 않은** — 여전히 프로젝트 루트를 가리키는 — 인스턴스를 찾습니다.
 
-즉 lookup은 하위 디렉터리에서도 동작합니다. `my-app/.coasts/feature-oauth/src/api/`에 있더라도, lookup은 여전히 `feature-oauth`를 worktree로 해석합니다.
+즉 lookup은 하위 디렉터리에서도 동작합니다. `my-app/.worktrees/feature-oauth/src/api/`에 있더라도, lookup은 여전히 `feature-oauth`를 worktree로 해석합니다.
 
 ## Exit Codes
 

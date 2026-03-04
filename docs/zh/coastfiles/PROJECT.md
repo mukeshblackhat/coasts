@@ -61,7 +61,7 @@ root = "../my-project"
 
 ### `worktree_dir`
 
-为 Coast 实例创建 git worktree 的目录。默认为 `".coasts"`。相对路径会相对于项目根目录解析。
+为 Coast 实例创建 git worktree 的目录。默认为 `".worktrees"`。运行时 Coast 会通过 `git worktree list` 自动检测现有 worktree 的目录位置，优先使用已有目录。相对路径会相对于项目根目录解析。
 
 ```toml
 [coast]

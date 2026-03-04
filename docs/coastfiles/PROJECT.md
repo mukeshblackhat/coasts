@@ -61,7 +61,7 @@ This is uncommon. Most projects keep the Coastfile at the actual project root.
 
 ### `worktree_dir`
 
-Directory where git worktrees are created for Coast instances. Defaults to `".coasts"`. Relative paths are resolved against the project root.
+Directory where git worktrees are created for Coast instances. Defaults to `".worktrees"`. At runtime, Coast auto-detects the directory from existing git worktrees (via `git worktree list`) and prefers that over the default. Relative paths are resolved against the project root.
 
 ```toml
 [coast]
