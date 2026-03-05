@@ -1,6 +1,6 @@
 # Búsqueda
 
-`coast lookup` descubre qué instancias de Coast se están ejecutando para el directorio de trabajo actual del llamador. Es el primer comando que un agente del lado del host debería ejecutar para orientarse: "Estoy editando código aquí, ¿con qué Coast(s) debería interactuar?"
+`coast lookup` descubre qué instancias de Coast se están ejecutando para el directorio de trabajo actual del usuario que llama. Es el primer comando que un agente del lado del host debería ejecutar para orientarse: «Estoy editando código aquí, ¿con qué Coast(s) debería interactuar?»
 
 ```bash
 coast lookup
@@ -8,11 +8,11 @@ coast lookup
 
 Lookup detecta si estás dentro de un [worktree](ASSIGN.md) o en la raíz del proyecto, consulta al daemon por instancias coincidentes e imprime los resultados con puertos, URLs y comandos de ejemplo.
 
-## Por Qué Existe
+## Por Qué Existe Esto
 
-Un agente de programación con IA que se ejecuta en el host (Cursor, Claude Code, Codex, etc.) edita archivos a través del [sistema de archivos compartido](FILESYSTEM.md) y llama comandos de Coast CLI para operaciones en tiempo de ejecución. Pero primero el agente necesita responder una pregunta básica: **¿qué instancia de Coast corresponde al directorio en el que estoy trabajando?**
+Un agente de programación con IA que se ejecuta en el host (Cursor, Claude Code, Codex, etc.) edita archivos mediante el [sistema de archivos compartido](FILESYSTEM.md) y llama a comandos de Coast CLI para operaciones en tiempo de ejecución. Pero primero el agente necesita responder una pregunta básica: **¿qué instancia de Coast corresponde al directorio en el que estoy trabajando?**
 
-Sin `coast lookup`, el agente tendría que ejecutar `coast ls`, analizar la tabla completa de instancias, averiguar en qué worktree está y cruzar referencias. `coast lookup` hace todo eso en un solo paso y devuelve una salida estructurada que los agentes pueden consumir directamente.
+Sin `coast lookup`, el agente tendría que ejecutar `coast ls`, analizar la tabla completa de instancias, averiguar en qué worktree está y hacer una referencia cruzada. `coast lookup` hace todo eso en un solo paso y devuelve una salida estructurada que los agentes pueden consumir directamente.
 
 Este comando debería incluirse en cualquier archivo SKILL.md, AGENTS.md o de reglas de nivel superior para flujos de trabajo de agentes que usen Coast. Es el punto de entrada para que un agente descubra su contexto de ejecución.
 
@@ -42,11 +42,11 @@ Coast instances for worktree feature/oauth (my-app):
     coast ps dev-1
 ```
 
-La sección de ejemplos recuerda a los agentes (y humanos) que `coast exec` inicia en la raíz del workspace — el directorio donde vive el Coastfile. Para ejecutar un comando en un subdirectorio, haz `cd` a él dentro del exec.
+La sección de ejemplos recuerda a los agentes (y a los humanos) que `coast exec` comienza en la raíz del espacio de trabajo — el directorio donde vive el Coastfile. Para ejecutar un comando en un subdirectorio, haz `cd` hacia él dentro del exec.
 
 ### Compacto (`--compact`)
 
-Devuelve un array JSON de nombres de instancia. Diseñado para scripts y herramientas de agentes que solo necesitan saber a qué instancias dirigirse.
+Devuelve un array JSON de nombres de instancias. Diseñado para scripts y herramientas de agentes que solo necesitan saber qué instancias deben tener como objetivo.
 
 ```bash
 coast lookup --compact
@@ -70,7 +70,7 @@ Sin coincidencias:
 
 ### JSON (`--json`)
 
-Devuelve la respuesta estructurada completa como JSON con impresión bonita. Diseñado para agentes que necesitan puertos, URLs y estado en un formato legible por máquina.
+Devuelve la respuesta estructurada completa como JSON con formato (pretty-printed). Diseñado para agentes que necesitan puertos, URLs y estado en un formato legible por máquina.
 
 ```bash
 coast lookup --json
@@ -99,9 +99,9 @@ coast lookup --json
 
 ## Cómo Lo Resuelve
 
-Lookup recorre hacia arriba desde el directorio de trabajo actual para encontrar el Coastfile más cercano y luego determina en qué worktree estás:
+Lookup recorre hacia arriba desde el directorio de trabajo actual para encontrar el Coastfile más cercano, y luego determina en qué worktree estás:
 
-1. Si tu cwd está bajo `{project_root}/{worktree_dir}/{name}/...`, lookup encuentra instancias asignadas a ese worktree.
+1. Si tu cwd está bajo `{project_root}/{worktree_dir}/{name}/...`, lookup encuentra las instancias asignadas a ese worktree.
 2. Si tu cwd es la raíz del proyecto (o cualquier directorio que no esté dentro de un worktree), lookup encuentra instancias **sin worktree asignado** — aquellas que aún apuntan a la raíz del proyecto.
 
 Esto significa que lookup también funciona desde subdirectorios. Si estás en `my-app/.worktrees/feature-oauth/src/api/`, lookup aún resuelve `feature-oauth` como el worktree.
@@ -110,10 +110,10 @@ Esto significa que lookup también funciona desde subdirectorios. Si estás en `
 
 | Code | Meaning |
 |------|---------|
-| 0 | Se encontró una o más instancias coincidentes |
-| 1 | No hay instancias coincidentes (resultado vacío) |
+| 0 | Una o más instancias coincidentes encontradas |
+| 1 | Ninguna instancia coincidente (resultado vacío) |
 
-Esto hace que lookup sea utilizable en condicionales de shell:
+Esto hace que lookup sea usable en condicionales de shell:
 
 ```bash
 if coast lookup > /dev/null 2>&1; then
@@ -125,9 +125,9 @@ fi
 
 El patrón típico de integración de agentes:
 
-1. El agente comienza a trabajar en un directorio de worktree.
-2. El agente ejecuta `coast lookup` para descubrir nombres de instancia, puertos, URLs y comandos de ejemplo.
-3. El agente usa el nombre de la instancia para todos los comandos posteriores de Coast: `coast exec`, `coast logs`, `coast ps`.
+1. El agente empieza a trabajar en un directorio de worktree.
+2. El agente ejecuta `coast lookup` para descubrir nombres de instancias, puertos, URLs y comandos de ejemplo.
+3. El agente usa el nombre de la instancia para todos los comandos de Coast posteriores: `coast exec`, `coast logs`, `coast ps`.
 
 ```text
 ┌─── Agent (host machine) ────────────────────────────┐
@@ -141,6 +141,6 @@ El patrón típico de integración de agentes:
 └──────────────────────────────────────────────────────┘
 ```
 
-Si el agente está trabajando a través de múltiples worktrees, ejecuta `coast lookup` desde cada directorio de worktree para resolver la instancia correcta para cada contexto.
+Si el agente está trabajando en múltiples worktrees, ejecuta `coast lookup` desde cada directorio de worktree para resolver la instancia correcta para cada contexto.
 
-Consulta también [Filesystem](FILESYSTEM.md) para ver cómo los agentes del host interactúan con Coast, [Assign and Unassign](ASSIGN.md) para conceptos de worktree, y [Exec & Docker](EXEC_AND_DOCKER.md) para ejecutar comandos dentro de un Coast.
+Ver también [Filesystem](FILESYSTEM.md) para cómo los agentes del host interactúan con Coast, [Assign and Unassign](ASSIGN.md) para conceptos de worktree, y [Exec & Docker](EXEC_AND_DOCKER.md) para ejecutar comandos dentro de un Coast.

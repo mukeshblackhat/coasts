@@ -6,19 +6,19 @@
 coast lookup
 ```
 
-O Lookup detecta se você está dentro de uma [worktree](ASSIGN.md) ou na raiz do projeto, consulta o daemon por instâncias correspondentes e imprime os resultados com portas, URLs e comandos de exemplo.
+O Lookup detecta se você está dentro de um [worktree](ASSIGN.md) ou na raiz do projeto, consulta o daemon por instâncias correspondentes e imprime os resultados com portas, URLs e comandos de exemplo.
 
-## Why This Exists
+## Por Que Isso Existe
 
-Um agente de codificação com IA executando no host (Cursor, Claude Code, Codex, etc.) edita arquivos por meio do [sistema de arquivos compartilhado](FILESYSTEM.md) e chama comandos do Coast CLI para operações em tempo de execução. Mas o agente primeiro precisa responder a uma pergunta básica: **qual instância do Coast corresponde ao diretório em que estou trabalhando?**
+Um agente de codificação com IA rodando no host (Cursor, Claude Code, Codex, etc.) edita arquivos através do [filesystem compartilhado](FILESYSTEM.md) e chama comandos da Coast CLI para operações de runtime. Mas primeiro o agente precisa responder a uma pergunta básica: **qual instância do Coast corresponde ao diretório em que estou trabalhando?**
 
-Sem `coast lookup`, o agente teria que executar `coast ls`, analisar a tabela completa de instâncias, descobrir em qual worktree está e fazer a correlação. `coast lookup` faz tudo isso em uma única etapa e retorna saída estruturada que os agentes podem consumir diretamente.
+Sem `coast lookup`, o agente teria que executar `coast ls`, analisar a tabela completa de instâncias, descobrir em qual worktree está e fazer a correlação. `coast lookup` faz tudo isso em um único passo e retorna uma saída estruturada que os agentes podem consumir diretamente.
 
-Este comando deve ser incluído em qualquer arquivo SKILL.md, AGENTS.md ou de regras de nível superior para fluxos de trabalho de agentes que usam Coast. É o ponto de entrada para um agente descobrir seu contexto de runtime.
+Este comando deve ser incluído em qualquer SKILL.md, AGENTS.md ou arquivo de regras de nível superior para fluxos de trabalho de agentes que usam Coast. Ele é o ponto de entrada para um agente descobrir seu contexto de runtime.
 
-## Output Modes
+## Modos de Saída
 
-### Default (human-readable)
+### Padrão (legível para humanos)
 
 ```bash
 coast lookup
@@ -42,11 +42,11 @@ Coast instances for worktree feature/oauth (my-app):
     coast ps dev-1
 ```
 
-A seção de exemplos lembra os agentes (e humanos) de que `coast exec` inicia na raiz do workspace — o diretório onde o Coastfile fica. Para executar um comando em um subdiretório, faça `cd` para ele dentro do exec.
+A seção de exemplos lembra agentes (e humanos) de que `coast exec` começa na raiz do workspace — o diretório onde o Coastfile está. Para executar um comando em um subdiretório, faça `cd` para ele dentro do exec.
 
-### Compact (`--compact`)
+### Compacto (`--compact`)
 
-Retorna um array JSON de nomes de instância. Projetado para scripts e ferramentas de agentes que só precisam saber quais instâncias devem ser alvo.
+Retorna um array JSON de nomes de instâncias. Projetado para scripts e ferramentas de agentes que só precisam saber quais instâncias devem ser alvo.
 
 ```bash
 coast lookup --compact
@@ -97,23 +97,23 @@ coast lookup --json
 }
 ```
 
-## How It Resolves
+## Como Ele Resolve
 
-O Lookup sobe a partir do diretório de trabalho atual para encontrar o Coastfile mais próximo e, em seguida, determina em qual worktree você está:
+O Lookup sobe a partir do diretório de trabalho atual para encontrar o Coastfile mais próximo e, então, determina em qual worktree você está:
 
-1. Se seu cwd estiver sob `{project_root}/{worktree_dir}/{name}/...`, o lookup encontra instâncias atribuídas a essa worktree.
-2. Se seu cwd for a raiz do projeto (ou qualquer diretório que não esteja dentro de uma worktree), o lookup encontra instâncias **sem worktree atribuída** — aquelas ainda apontadas para a raiz do projeto.
+1. Se seu cwd estiver sob `{project_root}/{worktree_dir}/{name}/...`, o lookup encontra instâncias atribuídas a esse worktree.
+2. Se seu cwd for a raiz do projeto (ou qualquer diretório que não esteja dentro de um worktree), o lookup encontra instâncias **sem worktree atribuída** — aquelas ainda apontadas para a raiz do projeto.
 
-Isso significa que o lookup funciona também a partir de subdiretórios. Se você estiver em `my-app/.worktrees/feature-oauth/src/api/`, o lookup ainda resolve `feature-oauth` como a worktree.
+Isso significa que o lookup funciona a partir de subdiretórios também. Se você estiver em `my-app/.worktrees/feature-oauth/src/api/`, o lookup ainda resolve `feature-oauth` como o worktree.
 
-## Exit Codes
+## Códigos de Saída
 
 | Code | Meaning |
 |------|---------|
 | 0 | Uma ou mais instâncias correspondentes encontradas |
 | 1 | Nenhuma instância correspondente (resultado vazio) |
 
-Isso torna o lookup utilizável em condicionais de shell:
+Isso torna o lookup utilizável em condicionais do shell:
 
 ```bash
 if coast lookup > /dev/null 2>&1; then
@@ -121,12 +121,12 @@ if coast lookup > /dev/null 2>&1; then
 fi
 ```
 
-## For Agent Workflows
+## Para Fluxos de Trabalho de Agentes
 
-O padrão típico de integração de agente:
+O padrão típico de integração de agentes:
 
 1. O agente começa a trabalhar em um diretório de worktree.
-2. O agente executa `coast lookup` para descobrir nomes de instância, portas, URLs e comandos de exemplo.
+2. O agente executa `coast lookup` para descobrir nomes de instâncias, portas, URLs e comandos de exemplo.
 3. O agente usa o nome da instância para todos os comandos subsequentes do Coast: `coast exec`, `coast logs`, `coast ps`.
 
 ```text
@@ -141,6 +141,6 @@ O padrão típico de integração de agente:
 └──────────────────────────────────────────────────────┘
 ```
 
-Se o agente estiver trabalhando em múltiplas worktrees, ele executa `coast lookup` a partir de cada diretório de worktree para resolver a instância correta para cada contexto.
+Se o agente estiver trabalhando em múltiplos worktrees, ele executa `coast lookup` a partir de cada diretório de worktree para resolver a instância correta para cada contexto.
 
-Veja também [Filesystem](FILESYSTEM.md) para como agentes no host interagem com o Coast, [Assign and Unassign](ASSIGN.md) para conceitos de worktree e [Exec & Docker](EXEC_AND_DOCKER.md) para executar comandos dentro de um Coast.
+Veja também [Filesystem](FILESYSTEM.md) para saber como agentes do host interagem com o Coast, [Assign and Unassign](ASSIGN.md) para conceitos de worktree, e [Exec & Docker](EXEC_AND_DOCKER.md) para executar comandos dentro de um Coast.

@@ -1,6 +1,6 @@
 # Projeto e Configuração
 
-A seção `[coast]` é a única seção obrigatória em um Coastfile. Ela identifica o projeto e configura como o contêiner do Coast é criado. A subseção opcional `[coast.setup]` permite instalar pacotes e executar comandos dentro do contêiner no momento do build.
+A seção `[coast]` é a única seção obrigatória em um Coastfile. Ela identifica o projeto e configura como o contêiner Coast é criado. A subseção opcional `[coast.setup]` permite instalar pacotes e executar comandos dentro do contêiner em tempo de build.
 
 ## `[coast]`
 
@@ -29,17 +29,17 @@ name = "my-app"
 compose = "./infra/docker-compose.yml"
 ```
 
-Se omitido, o contêiner do Coast inicia sem executar `docker compose up`. Você pode usar [serviços bare](SERVICES.md) ou interagir diretamente com o contêiner via `coast exec`.
+Se omitido, o contêiner Coast inicia sem executar `docker compose up`. Você pode usar [serviços bare](SERVICES.md) ou interagir com o contêiner diretamente via `coast exec`.
 
-Você não pode definir `compose` e `[services]` no mesmo Coastfile.
+Você não pode definir ambos `compose` e `[services]` no mesmo Coastfile.
 
 ### `runtime`
 
 Qual runtime de contêiner usar. O padrão é `"dind"` (Docker-in-Docker).
 
 - `"dind"` — Docker-in-Docker com `--privileged`. O único runtime testado em produção. Veja [Runtimes and Services](../concepts_and_terminology/RUNTIMES_AND_SERVICES.md).
-- `"sysbox"` — Usa o runtime Sysbox em vez do modo privilegiado. Requer que o Sysbox esteja instalado.
-- `"podman"` — Usa o Podman como runtime interno de contêiner.
+- `"sysbox"` — Usa o runtime Sysbox em vez do modo privilegiado. Requer o Sysbox instalado.
+- `"podman"` — Usa o Podman como o runtime interno de contêiner.
 
 ```toml
 [coast]
@@ -49,7 +49,7 @@ runtime = "dind"
 
 ### `root`
 
-Sobrescreve o diretório raiz do projeto. Por padrão, a raiz do projeto é o diretório que contém o Coastfile. Um caminho relativo é resolvido em relação ao diretório do Coastfile; um caminho absoluto é usado como está.
+Substitui o diretório raiz do projeto. Por padrão, a raiz do projeto é o diretório que contém o Coastfile. Um caminho relativo é resolvido em relação ao diretório do Coastfile; um caminho absoluto é usado como está.
 
 ```toml
 [coast]
@@ -57,11 +57,11 @@ name = "my-app"
 root = "../my-project"
 ```
 
-Isso é incomum. A maioria dos projetos mantém o Coastfile na verdadeira raiz do projeto.
+Isso é incomum. A maioria dos projetos mantém o Coastfile na raiz real do projeto.
 
 ### `worktree_dir`
 
-Diretório onde worktrees do git são criados para instâncias do Coast. O padrão é `".worktrees"`. Em tempo de execução, o Coast detecta automaticamente o diretório a partir de worktrees git existentes (via `git worktree list`) e prefere esse ao padrão. Caminhos relativos são resolvidos em relação à raiz do projeto.
+Diretório onde worktrees do git são criadas para instâncias do Coast. O padrão é `".worktrees"`. Em tempo de execução, o Coast detecta automaticamente o diretório a partir de worktrees existentes do git (via `git worktree list`) e prefere isso ao padrão. Caminhos relativos são resolvidos em relação à raiz do projeto.
 
 ```toml
 [coast]
@@ -75,7 +75,7 @@ Se o diretório for relativo e estiver dentro do projeto, o Coast o adiciona aut
 
 Se deve executar automaticamente `docker compose up` (ou iniciar serviços bare) quando uma instância do Coast é criada com `coast run`. O padrão é `true`.
 
-Defina como `false` quando você quiser o contêiner em execução, mas quiser iniciar os serviços manualmente — útil para variantes de test-runner em que você executa testes sob demanda.
+Defina como `false` quando você quiser o contêiner em execução, mas quiser iniciar serviços manualmente — útil para variantes de test-runner nas quais você invoca testes sob demanda.
 
 ```toml
 [coast]
@@ -86,7 +86,7 @@ autostart = false
 
 ### `primary_port`
 
-Nomeia uma porta da seção `[ports]` para uso em quick-links e roteamento por subdomínio. O valor deve corresponder a uma chave definida em `[ports]`.
+Nomeia uma porta da seção `[ports]` para usar em quick-links e roteamento por subdomínio. O valor deve corresponder a uma chave definida em `[ports]`.
 
 ```toml
 [coast]
@@ -98,15 +98,15 @@ web = 3000
 api = 8080
 ```
 
-Veja [Primary Port and DNS](../concepts_and_terminology/PRIMARY_PORT_AND_DNS.md) para entender como isso habilita roteamento por subdomínio e templates de URL.
+Veja [Primary Port and DNS](../concepts_and_terminology/PRIMARY_PORT_AND_DNS.md) para saber como isso habilita roteamento por subdomínio e templates de URL.
 
 ## `[coast.setup]`
 
-Personaliza o próprio contêiner do Coast — instalando ferramentas, executando etapas de build e materializando arquivos de configuração. Tudo em `[coast.setup]` é executado dentro do contêiner DinD (não dentro dos seus serviços do compose).
+Personaliza o próprio contêiner Coast — instalando ferramentas, executando etapas de build e materializando arquivos de configuração. Tudo em `[coast.setup]` é executado dentro do contêiner DinD (não dentro dos seus serviços do compose).
 
 ### `packages`
 
-Pacotes APK para instalar. Estes são pacotes do Alpine Linux, já que a imagem base do DinD é baseada em Alpine.
+Pacotes APK para instalar. Estes são pacotes do Alpine Linux, já que a imagem base DinD é baseada em Alpine.
 
 ```toml
 [coast.setup]
@@ -128,7 +128,7 @@ run = [
 
 ### `[[coast.setup.files]]`
 
-Arquivos a serem criados dentro do contêiner. Cada entrada tem um `path` (obrigatório, deve ser absoluto), `content` (obrigatório) e `mode` opcional (string octal de 3-4 dígitos).
+Arquivos a criar dentro do contêiner. Cada entrada tem um `path` (obrigatório, deve ser absoluto), `content` (obrigatório) e `mode` opcional (string octal de 3-4 dígitos).
 
 ```toml
 [coast.setup]
@@ -155,7 +155,7 @@ Regras de validação para entradas de arquivo:
 
 ## Exemplo completo
 
-Um contêiner do Coast configurado para desenvolvimento em Go e Node.js:
+Um contêiner Coast configurado para desenvolvimento em Go e Node.js:
 
 ```toml
 [coast]

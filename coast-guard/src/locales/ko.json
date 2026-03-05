@@ -520,5 +520,7 @@
   "docs.nav.coastfileAssign": "할당",
   "docs.nav.coastfileInheritance": "상속 및 타입",
   "docs.nav.coastfileAgentShell": "에이전트 셸",
-  "docs.nav.coastfileMcp": "MCP 서버 및 클라이언트"
+  "docs.nav.coastfileMcp": "MCP 서버 및 클라이언트",
+  "docs.nav.recipes": "레시피",
+  "docs.nav.recipesFullstackMonorepo": "풀스택 Monorepo"
 }

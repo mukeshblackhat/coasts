@@ -520,5 +520,7 @@
   "docs.nav.coastfileAssign": "割り当て",
   "docs.nav.coastfileInheritance": "継承とタイプ",
   "docs.nav.coastfileAgentShell": "エージェントシェル",
-  "docs.nav.coastfileMcp": "MCP サーバーとクライアント"
+  "docs.nav.coastfileMcp": "MCP サーバーとクライアント",
+  "docs.nav.recipes": "レシピ",
+  "docs.nav.recipesFullstackMonorepo": "フルスタック Monorepo"
 }

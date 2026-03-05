@@ -42,3 +42,7 @@ coastfiles/ASSIGN.md
 coastfiles/INHERITANCE.md
 coastfiles/AGENT_SHELL.md
 coastfiles/MCP.md
+
+# Recipes
+recipes/README.md
+recipes/FULLSTACK_MONOREPO.md

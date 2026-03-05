@@ -505,5 +505,7 @@
   "docs.nav.coastfileAssign": "Atribuição",
   "docs.nav.coastfileInheritance": "Herança e Tipos",
   "docs.nav.coastfileAgentShell": "Shell de Agente",
-  "docs.nav.coastfileMcp": "Servidores e Clientes MCP"
+  "docs.nav.coastfileMcp": "Servidores e Clientes MCP",
+  "docs.nav.recipes": "Receitas",
+  "docs.nav.recipesFullstackMonorepo": "Monorepo Full-Stack"
 }

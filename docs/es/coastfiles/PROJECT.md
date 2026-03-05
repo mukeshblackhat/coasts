@@ -29,17 +29,17 @@ name = "my-app"
 compose = "./infra/docker-compose.yml"
 ```
 
-Si se omite, el contenedor de Coast se inicia sin ejecutar `docker compose up`. Puedes usar [servicios bare](SERVICES.md) o interactuar con el contenedor directamente mediante `coast exec`.
+Si se omite, el contenedor de Coast se inicia sin ejecutar `docker compose up`. Puedes usar [servicios bare](SERVICES.md) o interactuar directamente con el contenedor mediante `coast exec`.
 
 No puedes establecer tanto `compose` como `[services]` en el mismo Coastfile.
 
 ### `runtime`
 
-Qué runtime de contenedores usar. Por defecto es `"dind"` (Docker-in-Docker).
+Qué runtime de contenedor usar. Por defecto es `"dind"` (Docker-in-Docker).
 
-- `"dind"` — Docker-in-Docker con `--privileged`. El único runtime probado en producción. Consulta [Runtimes and Services](../concepts_and_terminology/RUNTIMES_AND_SERVICES.md).
+- `"dind"` — Docker-in-Docker con `--privileged`. El único runtime probado en producción. Ver [Runtimes and Services](../concepts_and_terminology/RUNTIMES_AND_SERVICES.md).
 - `"sysbox"` — Usa el runtime Sysbox en lugar del modo privilegiado. Requiere que Sysbox esté instalado.
-- `"podman"` — Usa Podman como runtime interno de contenedores.
+- `"podman"` — Usa Podman como el runtime de contenedor interno.
 
 ```toml
 [coast]
@@ -61,7 +61,7 @@ Esto es poco común. La mayoría de los proyectos mantienen el Coastfile en la r
 
 ### `worktree_dir`
 
-Directorio donde se crean los worktrees de git para instancias de Coast. Por defecto es `".worktrees"`. En tiempo de ejecución, Coast detecta automáticamente el directorio a partir de worktrees git existentes (mediante `git worktree list`) y lo prefiere sobre el valor predeterminado. Las rutas relativas se resuelven contra la raíz del proyecto.
+Directorio donde se crean los worktrees de git para las instancias de Coast. Por defecto es `".worktrees"`. En tiempo de ejecución, Coast detecta automáticamente el directorio a partir de worktrees de git existentes (mediante `git worktree list`) y prefiere eso sobre el valor por defecto. Las rutas relativas se resuelven contra la raíz del proyecto.
 
 ```toml
 [coast]
@@ -73,9 +73,9 @@ Si el directorio es relativo y está dentro del proyecto, Coast lo añade autom�
 
 ### `autostart`
 
-Si se debe ejecutar automáticamente `docker compose up` (o iniciar servicios bare) cuando se crea una instancia de Coast con `coast run`. Por defecto es `true`.
+Si se debe ejecutar automáticamente `docker compose up` (o iniciar servicios bare) cuando se crea una instancia de Coast con `coast run`. El valor por defecto es `true`.
 
-Establécelo en `false` cuando quieres que el contenedor esté ejecutándose pero quieres iniciar los servicios manualmente — útil para variantes de ejecutores de pruebas donde invocas las pruebas bajo demanda.
+Establécelo en `false` cuando quieras el contenedor en ejecución pero quieras iniciar los servicios manualmente — útil para variantes de ejecutores de pruebas donde invocas las pruebas bajo demanda.
 
 ```toml
 [coast]
@@ -86,7 +86,7 @@ autostart = false
 
 ### `primary_port`
 
-Nombra un puerto de la sección `[ports]` para usarlo en enlaces rápidos y en el enrutamiento por subdominio. El valor debe coincidir con una clave definida en `[ports]`.
+Nombra un puerto de la sección `[ports]` para usarlo en enlaces rápidos y en el enrutamiento por subdominios. El valor debe coincidir con una clave definida en `[ports]`.
 
 ```toml
 [coast]
@@ -98,7 +98,7 @@ web = 3000
 api = 8080
 ```
 
-Consulta [Primary Port and DNS](../concepts_and_terminology/PRIMARY_PORT_AND_DNS.md) para ver cómo esto habilita el enrutamiento por subdominio y las plantillas de URL.
+Consulta [Primary Port and DNS](../concepts_and_terminology/PRIMARY_PORT_AND_DNS.md) para ver cómo esto habilita el enrutamiento por subdominios y las plantillas de URL.
 
 ## `[coast.setup]`
 
@@ -106,7 +106,7 @@ Personaliza el propio contenedor de Coast — instalando herramientas, ejecutand
 
 ### `packages`
 
-Paquetes APK para instalar. Estos son paquetes de Alpine Linux, ya que la imagen base de DinD está basada en Alpine.
+Paquetes APK a instalar. Estos son paquetes de Alpine Linux ya que la imagen base de DinD está basada en Alpine.
 
 ```toml
 [coast.setup]
@@ -115,7 +115,7 @@ packages = ["nodejs", "npm", "git", "curl"]
 
 ### `run`
 
-Comandos de shell ejecutados en orden durante la compilación. Úsalos para instalar herramientas que no están disponibles como paquetes APK.
+Comandos de shell ejecutados en orden durante la compilación. Úsalos para instalar herramientas que no estén disponibles como paquetes APK.
 
 ```toml
 [coast.setup]
@@ -128,7 +128,7 @@ run = [
 
 ### `[[coast.setup.files]]`
 
-Archivos a crear dentro del contenedor. Cada entrada tiene un `path` (obligatorio, debe ser absoluto), `content` (obligatorio) y un `mode` opcional (cadena octal de 3-4 dígitos).
+Archivos para crear dentro del contenedor. Cada entrada tiene un `path` (obligatorio, debe ser absoluto), `content` (obligatorio) y un `mode` opcional (cadena octal de 3-4 dígitos).
 
 ```toml
 [coast.setup]
@@ -146,12 +146,12 @@ content = '''
 mode = "0644"
 ```
 
-Reglas de validación para las entradas de archivos:
+Reglas de validación para entradas de archivos:
 
-- `path` debe ser absoluto (empezar con `/`)
+- `path` debe ser absoluto (comenzar con `/`)
 - `path` no debe contener componentes `..`
 - `path` no debe terminar con `/`
-- `mode` debe ser una cadena octal de 3 o 4 dígitos (p. ej., `"600"`, `"0644"`)
+- `mode` debe ser una cadena octal de 3 o 4 dígitos (p. ej. `"600"`, `"0644"`)
 
 ## Ejemplo completo
 

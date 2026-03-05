@@ -1,12 +1,12 @@
 # プロジェクトとセットアップ
 
-Coastfile で必須なのは `[coast]` セクションだけです。これはプロジェクトを識別し、Coast コンテナがどのように作成されるかを設定します。オプションの `[coast.setup]` サブセクションでは、ビルド時にコンテナ内でパッケージをインストールしたりコマンドを実行したりできます。
+`[coast]` セクションは Coastfile で唯一必須のセクションです。プロジェクトを識別し、Coast コンテナがどのように作成されるかを設定します。任意の `[coast.setup]` サブセクションでは、ビルド時にコンテナ内でパッケージをインストールしたりコマンドを実行したりできます。
 
 ## `[coast]`
 
 ### `name`（必須）
 
-プロジェクトの一意な識別子。コンテナ名、ボリューム名、状態追跡、CLI 出力で使用されます。
+プロジェクトの一意な識別子です。コンテナ名、ボリューム名、状態管理、CLI 出力で使用されます。
 
 ```toml
 [coast]
@@ -15,7 +15,7 @@ name = "my-app"
 
 ### `compose`
 
-Docker Compose ファイルへのパス。相対パスはプロジェクトルート（Coastfile を含むディレクトリ、または `root` が設定されている場合は `root`）を基準に解決されます。
+Docker Compose ファイルへのパスです。相対パスはプロジェクトルート（Coastfile を含むディレクトリ、または `root` が設定されている場合はそのディレクトリ）を基準に解決されます。
 
 ```toml
 [coast]
@@ -29,17 +29,17 @@ name = "my-app"
 compose = "./infra/docker-compose.yml"
 ```
 
-省略した場合、Coast コンテナは `docker compose up` を実行せずに起動します。[ベアサービス](SERVICES.md)を使うか、`coast exec` でコンテナに直接アクセスして操作できます。
+省略した場合、Coast コンテナは `docker compose up` を実行せずに起動します。[bare services](SERVICES.md) を使用するか、`coast exec` を介してコンテナを直接操作できます。
 
-同じ Coastfile で `compose` と `[services]` の両方を設定することはできません。
+同じ Coastfile 内で `compose` と `[services]` の両方を設定することはできません。
 
 ### `runtime`
 
-使用するコンテナランタイム。デフォルトは `"dind"`（Docker-in-Docker）です。
+使用するコンテナランタイムです。デフォルトは `"dind"`（Docker-in-Docker）です。
 
-- `"dind"` — `--privileged` を使う Docker-in-Docker。唯一プロダクションで検証されたランタイム。[Runtimes and Services](../concepts_and_terminology/RUNTIMES_AND_SERVICES.md) を参照してください。
+- `"dind"` — `--privileged` 付きの Docker-in-Docker。プロダクションで唯一テストされているランタイムです。[Runtimes and Services](../concepts_and_terminology/RUNTIMES_AND_SERVICES.md) を参照してください。
 - `"sysbox"` — 特権モードの代わりに Sysbox ランタイムを使用します。Sysbox のインストールが必要です。
-- `"podman"` — 内側のコンテナランタイムとして Podman を使用します。
+- `"podman"` — 内部のコンテナランタイムとして Podman を使用します。
 
 ```toml
 [coast]
@@ -61,7 +61,7 @@ root = "../my-project"
 
 ### `worktree_dir`
 
-Coast インスタンス用に git worktree が作成されるディレクトリ。デフォルトは `".worktrees"`。実行時に Coast は既存の git worktree からディレクトリを自動検出し（`git worktree list` を使用）、デフォルトより優先します。相対パスはプロジェクトルートを基準に解決されます。
+Coast インスタンス用に git worktree を作成するディレクトリです。デフォルトは `".worktrees"` です。実行時に Coast は既存の git worktree（`git worktree list` 経由）からディレクトリを自動検出し、デフォルトよりもそれを優先します。相対パスはプロジェクトルートを基準に解決されます。
 
 ```toml
 [coast]
@@ -69,13 +69,13 @@ name = "my-app"
 worktree_dir = ".worktrees"
 ```
 
-ディレクトリが相対パスで、かつプロジェクト内にある場合、Coast は自動的にそれを `.gitignore` に追加します。
+ディレクトリが相対パスでプロジェクト内にある場合、Coast はそれを自動的に `.gitignore` に追加します。
 
 ### `autostart`
 
-`coast run` で Coast インスタンスが作成されたときに、`docker compose up`（またはベアサービスの起動）を自動で実行するかどうか。デフォルトは `true` です。
+`coast run` で Coast インスタンスが作成されたときに、`docker compose up`（または bare services の起動）を自動実行するかどうかです。デフォルトは `true` です。
 
-コンテナは起動していてほしいがサービスは手動で起動したい場合は `false` に設定します。必要に応じてテストを実行するテストランナーのバリアントなどに便利です。
+コンテナは起動しておきつつサービスは手動で起動したい場合は `false` にします。必要に応じてテストを実行するテストランナーのバリアントに便利です。
 
 ```toml
 [coast]
@@ -86,7 +86,7 @@ autostart = false
 
 ### `primary_port`
 
-クイックリンクおよびサブドメインルーティングに使用するため、`[ports]` セクションからポート名を指定します。値は `[ports]` で定義されたキーと一致している必要があります。
+クイックリンクおよびサブドメインルーティングに使用するために、`[ports]` セクションのポート名を指定します。値は `[ports]` で定義されたキーと一致している必要があります。
 
 ```toml
 [coast]
@@ -98,15 +98,15 @@ web = 3000
 api = 8080
 ```
 
-これによりサブドメインルーティングと URL テンプレートが有効になる仕組みは、[Primary Port and DNS](../concepts_and_terminology/PRIMARY_PORT_AND_DNS.md) を参照してください。
+これによりサブドメインルーティングと URL テンプレートがどのように有効になるかは、[Primary Port and DNS](../concepts_and_terminology/PRIMARY_PORT_AND_DNS.md) を参照してください。
 
 ## `[coast.setup]`
 
-Coast コンテナ自体をカスタマイズします — ツールのインストール、ビルド手順の実行、設定ファイルの生成など。`[coast.setup]` 内の内容はすべて DinD コンテナ内で実行されます（compose のサービス内ではありません）。
+Coast コンテナ自体をカスタマイズします。ツールのインストール、ビルド手順の実行、設定ファイルの生成などを行います。`[coast.setup]` 内のすべては DinD コンテナ内で実行されます（compose サービス内ではありません）。
 
 ### `packages`
 
-インストールする APK パッケージ。ベースの DinD イメージが Alpine ベースのため、Alpine Linux のパッケージになります。
+インストールする APK パッケージです。ベースの DinD イメージは Alpine ベースのため、これらは Alpine Linux のパッケージです。
 
 ```toml
 [coast.setup]
@@ -115,7 +115,7 @@ packages = ["nodejs", "npm", "git", "curl"]
 
 ### `run`
 
-ビルド中に順番に実行されるシェルコマンド。APK パッケージとして提供されていないツールのインストールに使用します。
+ビルド中に順番に実行されるシェルコマンドです。APK パッケージとして利用できないツールのインストールに使用します。
 
 ```toml
 [coast.setup]
@@ -128,7 +128,7 @@ run = [
 
 ### `[[coast.setup.files]]`
 
-コンテナ内に作成するファイル。各エントリには `path`（必須、絶対パスである必要あり）、`content`（必須）、および任意の `mode`（3〜4 桁の 8 進数文字列）があります。
+コンテナ内に作成するファイルです。各エントリには `path`（必須、絶対パスである必要があります）、`content`（必須）、および任意の `mode`（3〜4 桁の 8 進文字列）があります。
 
 ```toml
 [coast.setup]
@@ -148,10 +148,10 @@ mode = "0644"
 
 ファイルエントリの検証ルール:
 
-- `path` は絶対パスである必要があります（`/` で始まる）
-- `path` に `..` コンポーネントを含めてはいけません
-- `path` は `/` で終わってはいけません
-- `mode` は 3 桁または 4 桁の 8 進数文字列である必要があります（例: `"600"`, `"0644"`）
+- `path` は絶対パス（`/` で始まる）でなければならない
+- `path` は `..` コンポーネントを含んではならない
+- `path` は `/` で終わってはならない
+- `mode` は 3 桁または 4 桁の 8 進文字列でなければならない（例: `"600"`、`"0644"`）
 
 ## 完全な例
 

@@ -58,6 +58,8 @@ const DOC_TITLE_KEYS: Record<string, string> = {
   'coastfiles/INHERITANCE.md': 'docs.nav.coastfileInheritance',
   'coastfiles/AGENT_SHELL.md': 'docs.nav.coastfileAgentShell',
   'coastfiles/MCP.md': 'docs.nav.coastfileMcp',
+  'recipes/README.md': 'docs.nav.recipes',
+  'recipes/FULLSTACK_MONOREPO.md': 'docs.nav.recipesFullstackMonorepo',
 };
 
 function docRoute(node: TreeNode): string {

@@ -548,5 +548,7 @@
   "docs.nav.coastfileAssign": "Assign",
   "docs.nav.coastfileInheritance": "Inheritance & Types",
   "docs.nav.coastfileAgentShell": "Agent Shell",
-  "docs.nav.coastfileMcp": "MCP Servers & Clients"
+  "docs.nav.coastfileMcp": "MCP Servers & Clients",
+  "docs.nav.recipes": "Recipes",
+  "docs.nav.recipesFullstackMonorepo": "Full-Stack Monorepo"
 }
