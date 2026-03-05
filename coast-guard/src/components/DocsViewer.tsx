@@ -155,6 +155,33 @@ function extractText(node: React.ReactNode): string {
   return '';
 }
 
+function PromptCopyButton({
+  text,
+}: {
+  text: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [text]);
+
+  return (
+    <div className="mb-4">
+      <button
+        onClick={handleCopy}
+        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors cursor-pointer bg-[var(--primary)] hover:bg-[var(--primary-strong)] text-[var(--primary-contrast)] border border-[var(--primary)]"
+      >
+        {copied ? <Check size={16} /> : <Copy size={16} />}
+        {copied ? 'Copied!' : 'Copy prompt for agent'}
+      </button>
+    </div>
+  );
+}
+
 function CopyableCodeBlock({
   text,
   preClassName,
@@ -346,6 +373,19 @@ export default function DocsViewer({ content, basePath, files }: DocsViewerProps
       const preClassName = isEmphasis
         ? 'mb-4 p-4 rounded-lg overflow-x-auto font-mono text-sm leading-relaxed bg-[var(--docs-code-surface)] border-2 border-[var(--primary)] ring-1 ring-[var(--primary)]/20'
         : 'mb-4 p-4 rounded-lg overflow-x-auto font-mono text-sm leading-relaxed bg-[var(--docs-code-surface)] border border-[var(--border)]';
+
+      if (childClass.includes('prompt-copy')) {
+        const filename = (typeof childProps?.['children'] === 'string'
+          ? childProps['children']
+          : extractText(children)
+        ).trim();
+        const txtPath = resolveRelativePath(filename, basePath);
+        const txtContent = files?.[txtPath];
+        if (txtContent != null) {
+          return <PromptCopyButton text={txtContent} />;
+        }
+        return null;
+      }
 
       if (isCopyable) {
         const textContent = typeof childProps?.['children'] === 'string'

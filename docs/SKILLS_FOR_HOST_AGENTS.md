@@ -85,24 +85,13 @@ find the relevant documentation.
 
 ## Adding the Skill to Your Agent
 
-The fastest way is to let the agent set itself up. Run one of these from your project directory:
+The fastest way is to let the agent set itself up. Copy the prompt below into your agent's chat — it includes the skill text and instructions for the agent to write it to its own config file (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/coast.md`, etc.).
 
-```bash-emphasis
-# Claude Code
-claude -p "$(coast skills-prompt)"
-
-# Codex
-codex "$(coast skills-prompt)"
-
-# Cursor (from terminal)
-cursor --chat "$(coast skills-prompt)"
-
-# Other agents (manual)
-coast skills-prompt
-# copy the output into your agent's system prompt
+```prompt-copy
+skills_prompt.txt
 ```
 
-This gives the agent the skill text and instructions to write it to its own config file (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/coast.md`, etc.).
+You can also get the same output from the CLI by running `coast skills-prompt`.
 
 ### Manual setup
 
