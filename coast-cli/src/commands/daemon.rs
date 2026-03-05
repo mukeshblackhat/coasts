@@ -91,6 +91,47 @@ fn resolve_coastd_path() -> PathBuf {
     PathBuf::from("coastd")
 }
 
+#[cfg(target_os = "macos")]
+fn launchd_path_value() -> Option<String> {
+    let current = std::env::var_os("PATH");
+    let existing_entries: Vec<PathBuf> = current
+        .as_ref()
+        .map(|path| std::env::split_paths(path).collect())
+        .unwrap_or_default();
+    let updated_entries = extend_path_entries(
+        existing_entries,
+        [
+            PathBuf::from("/opt/homebrew/bin"),
+            PathBuf::from("/usr/local/bin"),
+        ]
+        .into_iter()
+        .filter(|path| path.is_dir()),
+    );
+
+    std::env::join_paths(updated_entries)
+        .ok()
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn launchd_path_value() -> Option<String> {
+    None
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn extend_path_entries<I>(mut existing_entries: Vec<PathBuf>, candidates: I) -> Vec<PathBuf>
+where
+    I: IntoIterator<Item = PathBuf>,
+{
+    for candidate in candidates {
+        if !existing_entries.iter().any(|entry| entry == &candidate) {
+            existing_entries.push(candidate);
+        }
+    }
+
+    existing_entries
+}
+
 /// Read and parse the PID from `~/.coast/coastd.pid`.
 /// Returns `None` if the file doesn't exist or contains invalid content.
 pub(crate) fn read_pid(path: &PathBuf) -> Option<u32> {
@@ -422,6 +463,14 @@ fn systemd_unit_path() -> Result<PathBuf> {
 
 /// Generate a macOS launchd plist that starts `coastd --foreground` at login.
 pub fn generate_launchd_plist(coastd_path: &str, log_dir: &str) -> String {
+    let env_block = launchd_path_value()
+        .map(|path| {
+            format!(
+                "    <key>EnvironmentVariables</key>\n    <dict>\n        <key>PATH</key>\n        <string>{path}</string>\n    </dict>\n"
+            )
+        })
+        .unwrap_or_default();
+
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -439,6 +488,7 @@ pub fn generate_launchd_plist(coastd_path: &str, log_dir: &str) -> String {
     <true/>
     <key>KeepAlive</key>
     <true/>
+{env_block}\
     <key>StandardOutPath</key>
     <string>{log_dir}/coastd.stdout.log</string>
     <key>StandardErrorPath</key>
@@ -748,6 +798,28 @@ mod tests {
         assert!(plist.contains("/Users/test/.coast/coastd.stdout.log"));
         assert!(plist.contains("/Users/test/.coast/coastd.stderr.log"));
         assert!(plist.starts_with("<?xml"));
+        #[cfg(target_os = "macos")]
+        assert!(plist.contains("<key>EnvironmentVariables</key>"));
+    }
+
+    #[test]
+    fn test_extend_path_entries_appends_only_missing_candidates() {
+        let updated = extend_path_entries(
+            vec![PathBuf::from("/usr/bin"), PathBuf::from("/bin")],
+            [
+                PathBuf::from("/opt/homebrew/bin"),
+                PathBuf::from("/usr/bin"),
+            ],
+        );
+
+        assert_eq!(
+            updated,
+            vec![
+                PathBuf::from("/usr/bin"),
+                PathBuf::from("/bin"),
+                PathBuf::from("/opt/homebrew/bin"),
+            ]
+        );
     }
 
     #[test]
