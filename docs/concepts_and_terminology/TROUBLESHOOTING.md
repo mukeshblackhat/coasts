@@ -38,6 +38,22 @@ coast rm-build my-project
 
 This deletes the project's artifact directory, Docker images, volumes, and containers. It asks for confirmation first. Pass `--force` to skip the prompt.
 
+## Missing Shared Service Images
+
+If `coast run` fails while creating a shared service with an error like `No such image: postgres:15`, the image is missing from your host Docker daemon.
+
+This most commonly happens when your `Coastfile` defines `shared_services` such as Postgres or Redis and Docker has not pulled those images yet.
+
+Pull the missing image, then run the instance again:
+
+```bash
+docker pull postgres:15
+docker pull redis:7
+coast run my-instance
+```
+
+If you are not sure which image is missing, the failing `coast run` output will include the image name in the Docker error. After a failed provisioning attempt, Coasts cleans up the partial instance automatically, so seeing the instance return to `stopped` is expected.
+
 ## Factory Reset with Nuke
 
 When nothing else works — or you just want a completely clean slate — `coast nuke` performs a full factory reset:

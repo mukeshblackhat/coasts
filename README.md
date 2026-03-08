@@ -6,7 +6,7 @@
 
 Coasts (Containerized Hosts) is a CLI tool with a local observability UI for running multiple isolated instances of a full development environment on a single machine. It works out of the box with your current setup: no changes to your existing application code, just a small `Coastfile` at your repo root. If you already use Docker Compose, Coasts can boot from your existing `docker-compose.yml`; if you do not use Docker or Compose, Coasts works just as well.
 
-Build once and run N instances with whatever volume and networking topology your project needs. Check out one coast at a time to bind canonical ports to your host, and use dynamic ports to peek at any other worktree.
+Build once and run N instances with whatever volume and networking topology your project needs. Check out one coast at a time to bind canonical ports to your host, and use dynamic ports to peek into the progress of any worktree.
 
 Coasts is agnostic to AI providers and agent harnesses. The only host requirement is Git worktrees, so you can switch tools without changing how you work and without any harness-specific environment setup.
 
