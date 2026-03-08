@@ -35,13 +35,15 @@ pub(super) fn load_secrets_for_instance(
     let keystore_key = home_s.join(".coast").join("keystore.key");
 
     if keystore_db.exists() && keystore_key.exists() {
-        let coastfile_name = if coastfile_path.exists() {
-            coast_core::coastfile::Coastfile::from_file(coastfile_path)
-                .ok()
-                .map(|cf| cf.name)
+        let coastfile_parsed = if coastfile_path.exists() {
+            coast_core::coastfile::Coastfile::from_file(coastfile_path).ok()
         } else {
             None
         };
+        let coastfile_name = coastfile_parsed.as_ref().map(|cf| cf.name.clone());
+        let declared_names: Option<std::collections::HashSet<String>> = coastfile_parsed
+            .as_ref()
+            .map(|cf| cf.secrets.iter().map(|s| s.name.clone()).collect());
 
         if let Some(ref image_name) = coastfile_name {
             match coast_secrets::keystore::Keystore::open(&keystore_db, &keystore_key) {
@@ -49,6 +51,11 @@ pub(super) fn load_secrets_for_instance(
                     Ok(secrets) if !secrets.is_empty() => {
                         let resolved: Vec<coast_secrets::inject::ResolvedSecret> = secrets
                             .iter()
+                            .filter(|s| {
+                                declared_names
+                                    .as_ref()
+                                    .is_none_or(|allowed| allowed.contains(&s.secret_name))
+                            })
                             .map(|s| coast_secrets::inject::ResolvedSecret {
                                 name: s.secret_name.clone(),
                                 inject_type: s.inject_type.clone(),

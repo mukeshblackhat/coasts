@@ -55,24 +55,57 @@ async fn reveal_secret(
     State(state): State<Arc<AppState>>,
     Query(params): Query<RevealSecretParams>,
 ) -> Result<Json<RevealSecretResponse>, (StatusCode, Json<serde_json::Value>)> {
-    let db = state.db.lock().await;
-    let _instance = db
-        .get_instance(&params.project, &params.name)
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(
-                    serde_json::json!({ "error": format!("Instance '{}' not found", params.name) }),
-                ),
-            )
-        })?;
-    drop(db);
+    let (build_id, is_override) = {
+        let db = state.db.lock().await;
+        let instance = db
+            .get_instance(&params.project, &params.name)
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": e.to_string() })),
+                )
+            })?
+            .ok_or_else(|| {
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(
+                        serde_json::json!({ "error": format!("Instance '{}' not found", params.name) }),
+                    ),
+                )
+            })?;
+        let bid = instance.build_id.clone();
+        drop(db);
+
+        let override_key = format!("{}/{}", params.project, params.name);
+        let is_override_secret = if state.docker.is_some() {
+            dirs::home_dir()
+                .and_then(|home| {
+                    let ks_db = home.join(".coast").join("keystore.db");
+                    let ks_key = home.join(".coast").join("keystore.key");
+                    coast_secrets::keystore::Keystore::open(&ks_db, &ks_key)
+                        .ok()
+                        .and_then(|ks| ks.get_secret(&override_key, &params.secret).ok().flatten())
+                })
+                .is_some()
+        } else {
+            false
+        };
+        (bid, is_override_secret)
+    };
+
+    if !is_override {
+        let declared = handlers::declared_secret_names(&params.project, build_id.as_deref());
+        if let Some(ref allowed) = declared {
+            if !allowed.contains(&params.secret) {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(
+                        serde_json::json!({ "error": format!("Secret '{}' not found", params.secret) }),
+                    ),
+                ));
+            }
+        }
+    }
 
     if state.docker.is_none() {
         return Err((

@@ -115,6 +115,35 @@ pub fn compose_context_for_build(project: &str, build_id: Option<&str>) -> Compo
     }
 }
 
+/// Resolve the path to the cached Coastfile for a given project and optional build ID.
+///
+/// Build artifacts are stored at `~/.coast/images/{project}/{build_id}/coastfile.toml`.
+/// When no `build_id` is provided, falls back to the `latest` symlink.
+pub fn artifact_coastfile_path(project: &str, build_id: Option<&str>) -> std::path::PathBuf {
+    let home = dirs::home_dir().unwrap_or_default();
+    let mut base = home.join(".coast").join("images").join(project);
+    if let Some(build_id) = build_id {
+        base = base.join(build_id);
+    } else {
+        base = base.join("latest");
+    }
+    base.join("coastfile.toml")
+}
+
+/// Load the set of declared secret names from a build's cached Coastfile.
+///
+/// Returns `None` if the Coastfile cannot be found or parsed (graceful degradation
+/// so callers fall back to showing all keystore secrets).
+pub fn declared_secret_names(
+    project: &str,
+    build_id: Option<&str>,
+) -> Option<std::collections::HashSet<String>> {
+    let cf_path = artifact_coastfile_path(project, build_id);
+    coast_core::coastfile::Coastfile::from_file(&cf_path)
+        .ok()
+        .map(|cf| cf.secrets.iter().map(|s| s.name.clone()).collect())
+}
+
 /// Clear checked-out ownership for an instance.
 ///
 /// This kills any recorded canonical `socat` forwarders, clears their stored PIDs,
@@ -1010,5 +1039,86 @@ mod tests {
             msg.contains("my-app"),
             "Translation should contain the project name"
         );
+    }
+
+    #[test]
+    fn test_artifact_coastfile_path_with_build_id() {
+        let path = artifact_coastfile_path("my-app", Some("abc123"));
+        let path_str = path.to_string_lossy();
+        assert!(path_str.contains(".coast/images/my-app/abc123/coastfile.toml"));
+    }
+
+    #[test]
+    fn test_artifact_coastfile_path_without_build_id() {
+        let path = artifact_coastfile_path("my-app", None);
+        let path_str = path.to_string_lossy();
+        assert!(path_str.contains(".coast/images/my-app/latest/coastfile.toml"));
+    }
+
+    #[test]
+    fn test_declared_secret_names_nonexistent_path() {
+        let result = declared_secret_names("nonexistent-project-xyz", Some("no-such-build"));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_declared_secret_names_with_secrets() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = "test-proj";
+        let build_id = "build-001";
+        let cf_dir = dir
+            .path()
+            .join(".coast")
+            .join("images")
+            .join(project)
+            .join(build_id);
+        std::fs::create_dir_all(&cf_dir).unwrap();
+        std::fs::write(
+            cf_dir.join("coastfile.toml"),
+            r#"
+[coast]
+name = "test-proj"
+
+[secrets.db_pass]
+extractor = "file"
+path = "./db.txt"
+inject = "env:DB_PASS"
+
+[secrets.api_key]
+extractor = "file"
+path = "./api.txt"
+inject = "file:/run/secrets/api_key"
+"#,
+        )
+        .unwrap();
+
+        // Use the underlying Coastfile parser directly (declared_secret_names
+        // resolves against $HOME which we can't easily override).
+        let cf =
+            coast_core::coastfile::Coastfile::from_file(&cf_dir.join("coastfile.toml")).unwrap();
+        let names: std::collections::HashSet<String> =
+            cf.secrets.iter().map(|s| s.name.clone()).collect();
+        assert_eq!(names.len(), 2);
+        assert!(names.contains("db_pass"));
+        assert!(names.contains("api_key"));
+    }
+
+    #[test]
+    fn test_declared_secret_names_empty_coastfile() {
+        let dir = tempfile::tempdir().unwrap();
+        let cf_dir = dir
+            .path()
+            .join(".coast")
+            .join("images")
+            .join("proj")
+            .join("b1");
+        std::fs::create_dir_all(&cf_dir).unwrap();
+        std::fs::write(cf_dir.join("coastfile.toml"), "[coast]\nname = \"proj\"\n").unwrap();
+
+        let cf =
+            coast_core::coastfile::Coastfile::from_file(&cf_dir.join("coastfile.toml")).unwrap();
+        let names: std::collections::HashSet<String> =
+            cf.secrets.iter().map(|s| s.name.clone()).collect();
+        assert!(names.is_empty());
     }
 }

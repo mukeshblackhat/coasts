@@ -2,6 +2,8 @@
 ///
 /// Manages per-instance secret overrides. Supports setting a secret
 /// value for a specific instance and listing secrets.
+use std::collections::HashSet;
+
 use tracing::info;
 
 use coast_core::error::{CoastError, Result};
@@ -108,7 +110,9 @@ async fn handle_set(
 
 /// List secrets for an instance.
 ///
-/// Returns both the base secrets from the coast image and any per-instance overrides.
+/// Returns base secrets declared in the instance's Coastfile plus any per-instance
+/// overrides. Secrets from the keystore that were not declared in the instance's
+/// build Coastfile are filtered out to prevent cross-build leakage.
 async fn handle_list(
     instance: String,
     project: String,
@@ -121,16 +125,22 @@ async fn handle_list(
     );
 
     // Phase 1: DB read (locked) — verify instance exists
-    {
+    let build_id: Option<String> = {
         let db = state.db.lock().await;
         let inst = db.get_instance(&project, &instance)?;
-        if inst.is_none() {
-            return Err(CoastError::InstanceNotFound {
-                name: instance.clone(),
-                project: project.clone(),
-            });
+        match inst {
+            Some(i) => i.build_id.clone(),
+            None => {
+                return Err(CoastError::InstanceNotFound {
+                    name: instance.clone(),
+                    project: project.clone(),
+                });
+            }
         }
-    }
+    };
+
+    let declared: Option<HashSet<String>> =
+        super::declared_secret_names(&project, build_id.as_deref());
 
     // Phase 2: Keystore I/O (unlocked)
     // Query secrets from the keystore:
@@ -151,6 +161,11 @@ async fn handle_list(
                     // Get base secrets for the project
                     if let Ok(base_secrets) = keystore.get_all_secrets(&project) {
                         for s in &base_secrets {
+                            if let Some(ref allowed) = declared {
+                                if !allowed.contains(&s.secret_name) {
+                                    continue;
+                                }
+                            }
                             secrets.push(SecretInfo {
                                 name: s.secret_name.clone(),
                                 extractor: s.extractor.clone(),
@@ -217,6 +232,13 @@ mod tests {
             worktree_name: None,
             build_id: None,
             coastfile_type: None,
+        }
+    }
+
+    fn make_instance_with_build(name: &str, project: &str, build_id: &str) -> CoastInstance {
+        CoastInstance {
+            build_id: Some(build_id.to_string()),
+            ..make_instance(name, project)
         }
     }
 
@@ -291,5 +313,49 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_secret_list_with_build_id_returns_empty_without_docker() {
+        let state = test_state();
+        {
+            let db = state.db.lock().await;
+            db.insert_instance(&make_instance_with_build("dev-1", "my-app", "build-abc"))
+                .unwrap();
+        }
+
+        let req = SecretRequest::List {
+            instance: "dev-1".to_string(),
+            project: "my-app".to_string(),
+        };
+        let result = handle(req, &state).await;
+        assert!(result.is_ok());
+        let resp = result.unwrap();
+        assert!(
+            resp.secrets.is_empty(),
+            "Without Docker, no keystore secrets should be returned"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_secret_list_instance_without_build_id() {
+        let state = test_state();
+        {
+            let db = state.db.lock().await;
+            db.insert_instance(&make_instance("dev-1", "my-app"))
+                .unwrap();
+        }
+
+        let req = SecretRequest::List {
+            instance: "dev-1".to_string(),
+            project: "my-app".to_string(),
+        };
+        let result = handle(req, &state).await;
+        assert!(result.is_ok());
+        let resp = result.unwrap();
+        assert!(
+            resp.secrets.is_empty(),
+            "Without Docker, no keystore secrets should be returned"
+        );
     }
 }
