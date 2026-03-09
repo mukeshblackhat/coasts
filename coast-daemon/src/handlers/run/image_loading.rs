@@ -123,7 +123,6 @@ pub(super) async fn load_tarballs_into_inner_daemon(
 }
 
 /// Pipe per-instance images from the host daemon into the inner daemon via `docker save | docker load`.
-#[allow(clippy::cognitive_complexity)]
 pub(super) async fn pipe_host_images_to_inner_daemon(
     per_instance_image_tags: &[(String, String)],
     container_id: &str,
@@ -134,55 +133,102 @@ pub(super) async fn pipe_host_images_to_inner_daemon(
 
     let mut pipe_handles = Vec::new();
     for (service_name, tag) in per_instance_image_tags {
-        info!(
-            service = %service_name,
-            tag = %tag,
-            "loading per-instance image into inner daemon"
-        );
-        let tag_owned = tag.clone();
-        let cid_owned = container_id.to_string();
-        let svc_owned = service_name.clone();
-        pipe_handles.push(tokio::task::spawn_blocking(move || {
-            let mut save = std::process::Command::new("docker")
-                .args(["save", &tag_owned])
-                .stdout(std::process::Stdio::piped())
-                .spawn()?;
-            let save_stdout = save.stdout.take().expect("save stdout was piped");
-            let load_output = std::process::Command::new("docker")
-                .args(["exec", "-i", &cid_owned, "docker", "load"])
-                .stdin(save_stdout)
-                .output()?;
-            save.wait()?;
-            Ok::<_, std::io::Error>((svc_owned, tag_owned, load_output))
-        }));
+        pipe_handles.push(spawn_host_image_pipe_task(service_name, tag, container_id));
     }
+
     for handle in pipe_handles {
-        match handle.await {
-            Ok(Ok((svc, tag, output))) if output.status.success() => {
-                info!(service = %svc, tag = %tag, "per-instance image loaded into inner daemon");
-            }
-            Ok(Ok((svc, tag, output))) => {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                tracing::warn!(
-                    service = %svc,
-                    tag = %tag,
-                    stderr = %stderr,
-                    "failed to load per-instance image into inner daemon"
-                );
-            }
-            Ok(Err(e)) => {
-                tracing::warn!(error = %e, "failed to pipe image into inner daemon");
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "spawn_blocking failed for image piping");
-            }
+        handle_host_image_pipe_result(handle.await);
+    }
+}
+
+struct HostImagePipeResult {
+    service_name: String,
+    tag: String,
+    load_output: std::process::Output,
+}
+
+fn spawn_host_image_pipe_task(
+    service_name: &str,
+    tag: &str,
+    container_id: &str,
+) -> tokio::task::JoinHandle<Result<HostImagePipeResult, std::io::Error>> {
+    info!(
+        service = %service_name,
+        tag = %tag,
+        "loading per-instance image into inner daemon"
+    );
+    let tag_owned = tag.to_string();
+    let container_id_owned = container_id.to_string();
+    let service_name_owned = service_name.to_string();
+    tokio::task::spawn_blocking(move || {
+        pipe_host_image_into_inner_daemon(&service_name_owned, &tag_owned, &container_id_owned)
+    })
+}
+
+fn pipe_host_image_into_inner_daemon(
+    service_name: &str,
+    tag: &str,
+    container_id: &str,
+) -> Result<HostImagePipeResult, std::io::Error> {
+    let mut save = std::process::Command::new("docker")
+        .args(["save", tag])
+        .stdout(std::process::Stdio::piped())
+        .spawn()?;
+    let save_stdout = save.stdout.take().expect("save stdout was piped");
+    let load_output = std::process::Command::new("docker")
+        .args(["exec", "-i", container_id, "docker", "load"])
+        .stdin(save_stdout)
+        .output()?;
+    save.wait()?;
+
+    Ok(HostImagePipeResult {
+        service_name: service_name.to_string(),
+        tag: tag.to_string(),
+        load_output,
+    })
+}
+
+fn handle_host_image_pipe_result(
+    result: Result<Result<HostImagePipeResult, std::io::Error>, tokio::task::JoinError>,
+) {
+    match result {
+        Ok(pipe_result) => handle_host_image_pipe_outcome(pipe_result),
+        Err(error) => {
+            tracing::warn!(error = %error, "spawn_blocking failed for image piping");
         }
     }
+}
+
+fn handle_host_image_pipe_outcome(result: Result<HostImagePipeResult, std::io::Error>) {
+    match result {
+        Ok(pipe_result) => log_host_image_load_output(&pipe_result),
+        Err(error) => tracing::warn!(error = %error, "failed to pipe image into inner daemon"),
+    }
+}
+
+fn log_host_image_load_output(pipe_result: &HostImagePipeResult) {
+    if pipe_result.load_output.status.success() {
+        info!(
+            service = %pipe_result.service_name,
+            tag = %pipe_result.tag,
+            "per-instance image loaded into inner daemon"
+        );
+        return;
+    }
+
+    let stderr = String::from_utf8_lossy(&pipe_result.load_output.stderr);
+    tracing::warn!(
+        service = %pipe_result.service_name,
+        tag = %pipe_result.tag,
+        stderr = %stderr,
+        "failed to load per-instance image into inner daemon"
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::process::ExitStatusExt;
 
     // --- filter_tarballs_to_load ---
 
@@ -280,5 +326,26 @@ mod tests {
         let result = collect_project_tarballs(dir.path(), "my/org:app");
         assert!(result.contains(&"coast-built_my_org_app_svc_abc.tar".to_string()));
         assert!(!result.contains(&"coast-built_other_proj_svc_abc.tar".to_string()));
+    }
+
+    #[test]
+    fn test_log_host_image_load_output_handles_success_status() {
+        let result = HostImagePipeResult {
+            service_name: "web".to_string(),
+            tag: "coast-built:web".to_string(),
+            load_output: std::process::Output {
+                status: std::process::ExitStatus::from_raw(0),
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+            },
+        };
+
+        log_host_image_load_output(&result);
+    }
+
+    #[test]
+    fn test_handle_host_image_pipe_outcome_handles_io_error() {
+        let error = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "boom");
+        handle_host_image_pipe_outcome(Err(error));
     }
 }

@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use tracing::info;
 
@@ -22,141 +23,213 @@ pub(super) struct SecretInjectionPlan {
 ///
 /// Reads the encrypted keystore, resolves all secrets for the given coastfile
 /// image name, and produces env vars, bind mounts, and file data for exec injection.
-#[allow(clippy::cognitive_complexity)]
 pub(super) fn load_secrets_for_instance(
     coastfile_path: &Path,
     instance_name: &str,
 ) -> SecretInjectionPlan {
-    let mut env_vars = std::collections::HashMap::new();
-    let mut bind_mounts: Vec<coast_docker::runtime::BindMount> = Vec::new();
-
-    let home_s = dirs::home_dir().unwrap_or_default();
-    let keystore_db = home_s.join(".coast").join("keystore.db");
-    let keystore_key = home_s.join(".coast").join("keystore.key");
-
-    if keystore_db.exists() && keystore_key.exists() {
-        let coastfile_parsed = if coastfile_path.exists() {
-            coast_core::coastfile::Coastfile::from_file(coastfile_path).ok()
-        } else {
-            None
-        };
-        let coastfile_name = coastfile_parsed.as_ref().map(|cf| cf.name.clone());
-        let declared_names: Option<std::collections::HashSet<String>> = coastfile_parsed
-            .as_ref()
-            .map(|cf| cf.secrets.iter().map(|s| s.name.clone()).collect());
-
-        if let Some(ref image_name) = coastfile_name {
-            match coast_secrets::keystore::Keystore::open(&keystore_db, &keystore_key) {
-                Ok(keystore) => match keystore.get_all_secrets(image_name) {
-                    Ok(secrets) if !secrets.is_empty() => {
-                        let resolved: Vec<coast_secrets::inject::ResolvedSecret> = secrets
-                            .iter()
-                            .filter(|s| {
-                                declared_names
-                                    .as_ref()
-                                    .is_none_or(|allowed| allowed.contains(&s.secret_name))
-                            })
-                            .map(|s| coast_secrets::inject::ResolvedSecret {
-                                name: s.secret_name.clone(),
-                                inject_type: s.inject_type.clone(),
-                                inject_target: s.inject_target.clone(),
-                                value: s.value.clone(),
-                            })
-                            .collect();
-
-                        let tmpfs_base = home_s
-                            .join(".coast")
-                            .join("secrets-tmpfs")
-                            .join(instance_name);
-
-                        match coast_secrets::inject::build_injection_plan(&resolved, &tmpfs_base) {
-                            Ok(plan) => {
-                                env_vars = plan.env_vars;
-
-                                if !plan.file_mounts.is_empty() {
-                                    if let Err(e) = std::fs::create_dir_all(&tmpfs_base) {
-                                        tracing::warn!(
-                                            error = %e,
-                                            "failed to create secrets tmpfs dir"
-                                        );
-                                    } else {
-                                        for fm in &plan.file_mounts {
-                                            let secret_name = fm
-                                                .host_path
-                                                .file_name()
-                                                .and_then(|n| n.to_str())
-                                                .unwrap_or("");
-                                            if let Some(secret) =
-                                                resolved.iter().find(|s| s.name == secret_name)
-                                            {
-                                                if let Err(e) =
-                                                    std::fs::write(&fm.host_path, &secret.value)
-                                                {
-                                                    tracing::warn!(
-                                                        error = %e,
-                                                        path = %fm.host_path.display(),
-                                                        "failed to write secret file"
-                                                    );
-                                                } else {
-                                                    bind_mounts.push(
-                                                        coast_docker::runtime::BindMount {
-                                                            host_path: fm.host_path.clone(),
-                                                            container_path: fm
-                                                                .container_path
-                                                                .to_string_lossy()
-                                                                .to_string(),
-                                                            read_only: false,
-                                                            propagation: None,
-                                                        },
-                                                    );
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                info!(
-                                    env_count = env_vars.len(),
-                                    file_count = bind_mounts.len(),
-                                    "secrets loaded for injection"
-                                );
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    error = %e,
-                                    "failed to build secret injection plan"
-                                );
-                            }
-                        }
-                    }
-                    Ok(_) => {
-                        info!("no secrets found in keystore for project");
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            "failed to read secrets from keystore"
-                        );
-                    }
-                },
-                Err(e) => {
-                    tracing::warn!(error = %e, "failed to open keystore");
-                }
-            }
-        }
+    let home = dirs::home_dir().unwrap_or_default();
+    let (keystore_db, keystore_key) = keystore_paths(&home);
+    if !keystore_is_available(&keystore_db, &keystore_key) {
+        return empty_secret_injection_plan();
     }
 
+    let Some(secret_scope) = load_declared_secret_scope(coastfile_path) else {
+        return empty_secret_injection_plan();
+    };
+
+    let Some((env_vars, bind_mounts)) = load_secret_injection_parts(
+        &home,
+        &keystore_db,
+        &keystore_key,
+        &secret_scope,
+        instance_name,
+    ) else {
+        return empty_secret_injection_plan();
+    };
+
+    secret_plan_from_parts(env_vars, bind_mounts)
+}
+
+struct DeclaredSecretScope {
+    image_name: String,
+    declared_names: HashSet<String>,
+}
+
+fn keystore_paths(home: &Path) -> (PathBuf, PathBuf) {
+    (
+        home.join(".coast").join("keystore.db"),
+        home.join(".coast").join("keystore.key"),
+    )
+}
+
+fn keystore_is_available(keystore_db: &Path, keystore_key: &Path) -> bool {
+    keystore_db.exists() && keystore_key.exists()
+}
+
+fn load_declared_secret_scope(coastfile_path: &Path) -> Option<DeclaredSecretScope> {
+    let coastfile = if coastfile_path.exists() {
+        coast_core::coastfile::Coastfile::from_file(coastfile_path).ok()
+    } else {
+        None
+    }?;
+
+    Some(DeclaredSecretScope {
+        image_name: coastfile.name.clone(),
+        declared_names: coastfile
+            .secrets
+            .iter()
+            .map(|secret| secret.name.clone())
+            .collect(),
+    })
+}
+
+fn load_secret_injection_parts(
+    home: &Path,
+    keystore_db: &Path,
+    keystore_key: &Path,
+    secret_scope: &DeclaredSecretScope,
+    instance_name: &str,
+) -> Option<(
+    HashMap<String, String>,
+    Vec<coast_docker::runtime::BindMount>,
+)> {
+    let resolved_secrets = load_resolved_secrets(keystore_db, keystore_key, secret_scope)?;
+    let tmpfs_base = home
+        .join(".coast")
+        .join("secrets-tmpfs")
+        .join(instance_name);
+
+    let injection_plan =
+        match coast_secrets::inject::build_injection_plan(&resolved_secrets, &tmpfs_base) {
+            Ok(plan) => plan,
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to build secret injection plan");
+                return None;
+            }
+        };
+
+    let bind_mounts =
+        write_secret_file_mounts(&injection_plan.file_mounts, &resolved_secrets, &tmpfs_base);
+
+    info!(
+        env_count = injection_plan.env_vars.len(),
+        file_count = bind_mounts.len(),
+        "secrets loaded for injection"
+    );
+
+    Some((injection_plan.env_vars, bind_mounts))
+}
+
+fn load_resolved_secrets(
+    keystore_db: &Path,
+    keystore_key: &Path,
+    secret_scope: &DeclaredSecretScope,
+) -> Option<Vec<coast_secrets::inject::ResolvedSecret>> {
+    match coast_secrets::keystore::Keystore::open(keystore_db, keystore_key) {
+        Ok(keystore) => match keystore.get_all_secrets(&secret_scope.image_name) {
+            Ok(secrets) if !secrets.is_empty() => Some(filter_declared_resolved_secrets(
+                &secrets,
+                &secret_scope.declared_names,
+            )),
+            Ok(_) => {
+                info!("no secrets found in keystore for project");
+                None
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to read secrets from keystore");
+                None
+            }
+        },
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to open keystore");
+            None
+        }
+    }
+}
+
+fn filter_declared_resolved_secrets(
+    secrets: &[coast_secrets::keystore::StoredSecret],
+    declared_names: &HashSet<String>,
+) -> Vec<coast_secrets::inject::ResolvedSecret> {
+    secrets
+        .iter()
+        .filter(|secret| declared_names.contains(&secret.secret_name))
+        .map(|secret| coast_secrets::inject::ResolvedSecret {
+            name: secret.secret_name.clone(),
+            inject_type: secret.inject_type.clone(),
+            inject_target: secret.inject_target.clone(),
+            value: secret.value.clone(),
+        })
+        .collect()
+}
+
+fn write_secret_file_mounts(
+    file_mounts: &[coast_secrets::inject::FileMount],
+    resolved_secrets: &[coast_secrets::inject::ResolvedSecret],
+    tmpfs_base: &Path,
+) -> Vec<coast_docker::runtime::BindMount> {
+    if file_mounts.is_empty() {
+        return Vec::new();
+    }
+
+    if let Err(e) = std::fs::create_dir_all(tmpfs_base) {
+        tracing::warn!(error = %e, "failed to create secrets tmpfs dir");
+        return Vec::new();
+    }
+
+    let mut bind_mounts = Vec::new();
+    for file_mount in file_mounts {
+        if let Some(bind_mount) = write_secret_file_mount(file_mount, resolved_secrets) {
+            bind_mounts.push(bind_mount);
+        }
+    }
+    bind_mounts
+}
+
+fn write_secret_file_mount(
+    file_mount: &coast_secrets::inject::FileMount,
+    resolved_secrets: &[coast_secrets::inject::ResolvedSecret],
+) -> Option<coast_docker::runtime::BindMount> {
+    let secret_name = file_mount
+        .host_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    let secret = resolved_secrets
+        .iter()
+        .find(|secret| secret.name == secret_name)?;
+
+    if let Err(e) = std::fs::write(&file_mount.host_path, &secret.value) {
+        tracing::warn!(
+            error = %e,
+            path = %file_mount.host_path.display(),
+            "failed to write secret file"
+        );
+        return None;
+    }
+
+    Some(coast_docker::runtime::BindMount {
+        host_path: file_mount.host_path.clone(),
+        container_path: file_mount.container_path.to_string_lossy().to_string(),
+        read_only: false,
+        propagation: None,
+    })
+}
+
+fn secret_plan_from_parts(
+    env_vars: HashMap<String, String>,
+    bind_mounts: Vec<coast_docker::runtime::BindMount>,
+) -> SecretInjectionPlan {
     let container_paths: Vec<String> = bind_mounts
         .iter()
-        .map(|bm| bm.container_path.clone())
+        .map(|bind_mount| bind_mount.container_path.clone())
         .collect();
-
     let files_for_exec: Vec<(String, Vec<u8>)> = bind_mounts
         .iter()
-        .filter_map(|bm| {
-            std::fs::read(&bm.host_path)
+        .filter_map(|bind_mount| {
+            std::fs::read(&bind_mount.host_path)
                 .ok()
-                .map(|data| (bm.container_path.clone(), data))
+                .map(|data| (bind_mount.container_path.clone(), data))
         })
         .collect();
 
@@ -166,6 +239,10 @@ pub(super) fn load_secrets_for_instance(
         container_paths,
         files_for_exec,
     }
+}
+
+fn empty_secret_injection_plan() -> SecretInjectionPlan {
+    secret_plan_from_parts(HashMap::new(), Vec::new())
 }
 
 /// Write file-type secrets directly into the DinD container via exec.
@@ -238,6 +315,25 @@ fn base64_encode_bytes(input: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
+
+    fn stored_secret(
+        name: &str,
+        inject_type: &str,
+        inject_target: &str,
+        value: &[u8],
+    ) -> coast_secrets::keystore::StoredSecret {
+        coast_secrets::keystore::StoredSecret {
+            coast_image: "test-image".to_string(),
+            secret_name: name.to_string(),
+            value: value.to_vec(),
+            inject_type: inject_type.to_string(),
+            inject_target: inject_target.to_string(),
+            extracted_at: Utc::now(),
+            extractor: "test".to_string(),
+            ttl_seconds: None,
+        }
+    }
 
     // --- base64_encode_bytes ---
 
@@ -332,5 +428,89 @@ mod tests {
         for (bm, cp) in plan.bind_mounts.iter().zip(plan.container_paths.iter()) {
             assert_eq!(&bm.container_path, cp);
         }
+    }
+
+    #[test]
+    fn test_filter_declared_resolved_secrets_keeps_only_declared_names() {
+        let secrets = vec![
+            stored_secret("api_key", "env", "API_KEY", b"secret123"),
+            stored_secret(
+                "gcp_creds",
+                "file",
+                "/run/secrets/gcp.json",
+                b"{\"key\":\"value\"}",
+            ),
+        ];
+        let declared_names = ["api_key".to_string()]
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>();
+
+        let resolved = filter_declared_resolved_secrets(&secrets, &declared_names);
+
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].name, "api_key");
+        assert_eq!(resolved[0].inject_type, "env");
+        assert_eq!(resolved[0].inject_target, "API_KEY");
+        assert_eq!(resolved[0].value, b"secret123");
+    }
+
+    #[test]
+    fn test_write_secret_file_mounts_writes_files_and_returns_bind_mounts() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_mounts = vec![coast_secrets::inject::FileMount {
+            host_path: dir.path().join("gcp_creds"),
+            container_path: PathBuf::from("/run/secrets/gcp.json"),
+        }];
+        let resolved_secrets = vec![coast_secrets::inject::ResolvedSecret {
+            name: "gcp_creds".to_string(),
+            inject_type: "file".to_string(),
+            inject_target: "/run/secrets/gcp.json".to_string(),
+            value: b"{\"key\":\"value\"}".to_vec(),
+        }];
+
+        let bind_mounts = write_secret_file_mounts(&file_mounts, &resolved_secrets, dir.path());
+
+        assert_eq!(bind_mounts.len(), 1);
+        assert_eq!(bind_mounts[0].host_path, dir.path().join("gcp_creds"));
+        assert_eq!(bind_mounts[0].container_path, "/run/secrets/gcp.json");
+        assert_eq!(
+            std::fs::read(dir.path().join("gcp_creds")).unwrap(),
+            b"{\"key\":\"value\"}"
+        );
+    }
+
+    #[test]
+    fn test_secret_plan_from_parts_skips_missing_exec_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let existing_host_path = dir.path().join("secret1");
+        std::fs::write(&existing_host_path, b"secret-one").unwrap();
+
+        let bind_mounts = vec![
+            coast_docker::runtime::BindMount {
+                host_path: existing_host_path.clone(),
+                container_path: "/run/secrets/secret1".to_string(),
+                read_only: false,
+                propagation: None,
+            },
+            coast_docker::runtime::BindMount {
+                host_path: dir.path().join("missing"),
+                container_path: "/run/secrets/missing".to_string(),
+                read_only: false,
+                propagation: None,
+            },
+        ];
+
+        let plan = secret_plan_from_parts(HashMap::new(), bind_mounts);
+
+        assert_eq!(
+            plan.container_paths,
+            vec![
+                "/run/secrets/secret1".to_string(),
+                "/run/secrets/missing".to_string()
+            ]
+        );
+        assert_eq!(plan.files_for_exec.len(), 1);
+        assert_eq!(plan.files_for_exec[0].0, "/run/secrets/secret1");
+        assert_eq!(plan.files_for_exec[0].1, b"secret-one");
     }
 }

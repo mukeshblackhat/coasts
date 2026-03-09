@@ -1,8 +1,9 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tracing::info;
 
 use coast_core::protocol::BuildProgressEvent;
+use coast_docker::compose_build::ComposeBuildDirective;
 
 use super::emit;
 
@@ -11,95 +12,178 @@ use super::emit;
 /// Parses the compose file to find build directives, runs `docker build` on the host for each,
 /// and returns the list of (service_name, image_tag) pairs that were successfully built.
 /// Uses the host's Docker layer cache from `coast build`, making rebuilds fast.
-#[allow(clippy::cognitive_complexity)]
 pub(super) async fn build_per_instance_images_on_host(
     code_path: &Path,
     project: &str,
     instance_name: &str,
     progress: &tokio::sync::mpsc::Sender<BuildProgressEvent>,
 ) -> Vec<(String, String)> {
-    let mut image_tags: Vec<(String, String)> = Vec::new();
+    let mut image_tags = Vec::new();
 
-    let compose_candidates = [
-        "docker-compose.yml",
-        "docker-compose.yaml",
-        "compose.yml",
-        "compose.yaml",
-    ];
-    let original_compose_path = compose_candidates
-        .iter()
-        .map(|name| code_path.join(name))
-        .find(|p| p.exists());
-
-    let Some(compose_path) = original_compose_path else {
-        return image_tags;
-    };
-    let Ok(compose_content) = std::fs::read_to_string(&compose_path) else {
-        return image_tags;
-    };
-    let Ok(parse_result) =
-        coast_docker::compose_build::parse_compose_file(&compose_content, project)
-    else {
-        return image_tags;
-    };
-
-    for directive in &parse_result.build_directives {
-        let instance_tag = coast_docker::compose_build::coast_built_instance_image_tag(
-            project,
-            &directive.service_name,
-            instance_name,
-        );
-        info!(
-            service = %directive.service_name,
-            tag = %instance_tag,
-            "building per-instance image on HOST"
-        );
-        let mut build_directive = directive.clone();
-        build_directive.coast_image_tag = instance_tag.clone();
-        let cmd_args = coast_docker::compose_build::docker_build_cmd(&build_directive, code_path);
-        match tokio::process::Command::new(&cmd_args[0])
-            .args(&cmd_args[1..])
-            .output()
-            .await
+    for directive in load_host_build_directives(code_path, project) {
+        if let Some(image_tag) =
+            build_image_on_host(&directive, code_path, project, instance_name, progress).await
         {
-            Ok(output) if output.status.success() => {
-                image_tags.push((directive.service_name.clone(), instance_tag));
-                emit(
-                    progress,
-                    BuildProgressEvent::item("Building images", &directive.service_name, "ok"),
-                );
-                info!(
-                    service = %directive.service_name,
-                    "per-instance image built on HOST"
-                );
-            }
-            Ok(output) => {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                emit(
-                    progress,
-                    BuildProgressEvent::item("Building images", &directive.service_name, "warn")
-                        .with_verbose(stderr.trim().to_string()),
-                );
-                tracing::warn!(
-                    service = %directive.service_name,
-                    stderr = %stderr,
-                    "failed to build per-instance image on HOST, inner compose will build"
-                );
-            }
-            Err(e) => {
-                emit(
-                    progress,
-                    BuildProgressEvent::item("Building images", &directive.service_name, "warn")
-                        .with_verbose(e.to_string()),
-                );
-                tracing::warn!(
-                    service = %directive.service_name,
-                    error = %e,
-                    "failed to run docker build on HOST, inner compose will build"
-                );
-            }
+            image_tags.push(image_tag);
         }
     }
 
     image_tags
+}
+
+fn load_host_build_directives(code_path: &Path, project: &str) -> Vec<ComposeBuildDirective> {
+    let Some(compose_path) = find_workspace_compose_path(code_path) else {
+        return Vec::new();
+    };
+    let Ok(compose_content) = std::fs::read_to_string(compose_path) else {
+        return Vec::new();
+    };
+
+    coast_docker::compose_build::parse_compose_file(&compose_content, project)
+        .map(|result| result.build_directives)
+        .unwrap_or_default()
+}
+
+fn find_workspace_compose_path(code_path: &Path) -> Option<PathBuf> {
+    [
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        "compose.yml",
+        "compose.yaml",
+    ]
+    .iter()
+    .map(|name| code_path.join(name))
+    .find(|path| path.exists())
+}
+
+async fn build_image_on_host(
+    directive: &ComposeBuildDirective,
+    code_path: &Path,
+    project: &str,
+    instance_name: &str,
+    progress: &tokio::sync::mpsc::Sender<BuildProgressEvent>,
+) -> Option<(String, String)> {
+    let (instance_tag, command_args) =
+        host_build_command_args(directive, code_path, project, instance_name);
+
+    info!(
+        service = %directive.service_name,
+        tag = %instance_tag,
+        "building per-instance image on HOST"
+    );
+
+    let build_result = tokio::process::Command::new(&command_args[0])
+        .args(&command_args[1..])
+        .output()
+        .await;
+
+    handle_host_build_result(
+        &directive.service_name,
+        instance_tag,
+        build_result,
+        progress,
+    )
+}
+
+fn host_build_command_args(
+    directive: &ComposeBuildDirective,
+    code_path: &Path,
+    project: &str,
+    instance_name: &str,
+) -> (String, Vec<String>) {
+    let instance_tag = coast_docker::compose_build::coast_built_instance_image_tag(
+        project,
+        &directive.service_name,
+        instance_name,
+    );
+    let mut build_directive = directive.clone();
+    build_directive.coast_image_tag = instance_tag.clone();
+    let command_args = coast_docker::compose_build::docker_build_cmd(&build_directive, code_path);
+    (instance_tag, command_args)
+}
+
+fn handle_host_build_result(
+    service_name: &str,
+    instance_tag: String,
+    build_result: Result<std::process::Output, std::io::Error>,
+    progress: &tokio::sync::mpsc::Sender<BuildProgressEvent>,
+) -> Option<(String, String)> {
+    match build_result {
+        Ok(output) if output.status.success() => {
+            emit(
+                progress,
+                BuildProgressEvent::item("Building images", service_name, "ok"),
+            );
+            info!(service = %service_name, "per-instance image built on HOST");
+            Some((service_name.to_string(), instance_tag))
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            emit_host_build_warning(progress, service_name, stderr.trim().to_string());
+            tracing::warn!(
+                service = %service_name,
+                stderr = %stderr,
+                "failed to build per-instance image on HOST, inner compose will build"
+            );
+            None
+        }
+        Err(error) => {
+            emit_host_build_warning(progress, service_name, error.to_string());
+            tracing::warn!(
+                service = %service_name,
+                error = %error,
+                "failed to run docker build on HOST, inner compose will build"
+            );
+            None
+        }
+    }
+}
+
+fn emit_host_build_warning(
+    progress: &tokio::sync::mpsc::Sender<BuildProgressEvent>,
+    service_name: &str,
+    verbose_detail: String,
+) {
+    emit(
+        progress,
+        BuildProgressEvent::item("Building images", service_name, "warn")
+            .with_verbose(verbose_detail),
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_workspace_compose_path_finds_first_existing_candidate() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("compose.yaml"), "services: {}\n").unwrap();
+
+        let compose_path = find_workspace_compose_path(dir.path()).unwrap();
+        assert_eq!(compose_path, dir.path().join("compose.yaml"));
+    }
+
+    #[test]
+    fn test_load_host_build_directives_parses_build_services() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("docker-compose.yml"),
+            r#"
+services:
+  web:
+    build: .
+  worker:
+    image: busybox:latest
+"#,
+        )
+        .unwrap();
+
+        let directives = load_host_build_directives(dir.path(), "proj");
+
+        assert_eq!(directives.len(), 1);
+        assert_eq!(directives[0].service_name, "web");
+        assert_eq!(directives[0].context, ".");
+        assert!(directives[0].dockerfile.is_none());
+    }
 }

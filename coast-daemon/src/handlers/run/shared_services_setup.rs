@@ -1,12 +1,16 @@
+use std::collections::HashMap;
+
 use tracing::info;
 
 use coast_core::error::{CoastError, Result};
+use coast_core::types::SharedServiceConfig;
 
 use crate::server::AppState;
 
 /// Result of starting shared services on the host daemon.
 pub(super) struct SharedServicesResult {
     pub service_names: Vec<String>,
+    #[allow(dead_code)]
     pub service_hosts: std::collections::HashMap<String, String>,
     pub network_name: Option<String>,
 }
@@ -21,15 +25,14 @@ pub(super) struct SharedServicesResult {
 /// 5. Record in the state DB
 ///
 /// Returns the names, host mappings, and network name for use in compose overrides.
-#[allow(clippy::cognitive_complexity)]
 pub(super) async fn start_shared_services(
     project: &str,
-    shared_service_configs: &[coast_core::types::SharedServiceConfig],
+    shared_service_configs: &[SharedServiceConfig],
     docker: &bollard::Docker,
     state: &AppState,
 ) -> Result<SharedServicesResult> {
     let mut service_names = Vec::new();
-    let mut service_hosts = std::collections::HashMap::new();
+    let mut service_hosts = HashMap::new();
 
     let nm = coast_docker::network::NetworkManager::with_client(docker.clone());
     let network_name = nm.create_shared_network(project).await?;
@@ -38,125 +41,16 @@ pub(super) async fn start_shared_services(
         let container_name =
             crate::shared_services::shared_container_name(project, &svc_config.name);
 
-        let existing = {
-            let db = state.db.lock().await;
-            db.get_shared_service(project, &svc_config.name)?
-        };
-
-        let already_running = if let Some(ref rec) = existing {
-            if rec.status == "running" {
-                docker
-                    .inspect_container(&container_name, None)
-                    .await
-                    .is_ok()
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-
-        if !already_running {
-            let _ = docker.stop_container(&container_name, None).await;
-            let _ = docker.remove_container(&container_name, None).await;
-
-            let shared_cfg =
-                crate::shared_services::build_shared_container_config(project, svc_config);
-
-            let mut port_bindings = std::collections::HashMap::new();
-            for port in &svc_config.ports {
-                let key = format!("{port}/tcp");
-                port_bindings.insert(
-                    key,
-                    Some(vec![bollard::models::PortBinding {
-                        host_ip: Some("0.0.0.0".to_string()),
-                        host_port: Some(port.to_string()),
-                    }]),
-                );
-            }
-
-            let host_config = bollard::models::HostConfig {
-                binds: Some(shared_cfg.volumes.clone()),
-                port_bindings: Some(port_bindings),
-                restart_policy: Some(bollard::models::RestartPolicy {
-                    name: Some(bollard::models::RestartPolicyNameEnum::UNLESS_STOPPED),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            };
-
-            let mut exposed: std::collections::HashMap<String, std::collections::HashMap<(), ()>> =
-                std::collections::HashMap::new();
-            for port in &svc_config.ports {
-                exposed.insert(format!("{port}/tcp"), std::collections::HashMap::new());
-            }
-
-            let create_config = bollard::container::Config {
-                image: Some(shared_cfg.image.clone()),
-                env: Some(shared_cfg.env.clone()),
-                host_config: Some(host_config),
-                labels: Some(shared_cfg.labels.clone()),
-                exposed_ports: Some(exposed),
-                ..Default::default()
-            };
-
-            let create_opts = bollard::container::CreateContainerOptions {
-                name: container_name.clone(),
-                ..Default::default()
-            };
-
-            docker
-                .create_container(Some(create_opts), create_config)
-                .await
-                .map_err(|e| {
-                    CoastError::docker(format!(
-                        "Failed to create shared service container '{}': {}",
-                        container_name, e
-                    ))
-                })?;
-
-            docker
-                .start_container::<String>(&container_name, None)
-                .await
-                .map_err(|e| {
-                    let raw = e.to_string();
-                    if let Some(msg) =
-                        humanize_port_conflict(&raw, &svc_config.name, &svc_config.ports)
-                    {
-                        CoastError::docker(msg)
-                    } else {
-                        CoastError::docker(format!(
-                            "Failed to start shared service container '{}': {}",
-                            container_name, e
-                        ))
-                    }
-                })?;
-
-            if let Err(e) = nm.connect_container(&network_name, &container_name).await {
-                tracing::warn!(error = %e, container = %container_name, "failed to connect shared service to network (may already be connected)");
-            }
-
-            info!(
-                service = %svc_config.name,
-                container = %container_name,
-                "shared service started on host daemon"
-            );
-
-            {
-                let db = state.db.lock().await;
-                let _ = db.insert_shared_service(
-                    project,
-                    &svc_config.name,
-                    Some(&container_name),
-                    "running",
-                );
-            }
-        } else {
-            info!(
-                service = %svc_config.name,
-                "shared service already running, skipping"
-            );
-        }
+        start_or_reuse_shared_service(
+            project,
+            svc_config,
+            &container_name,
+            &network_name,
+            docker,
+            state,
+            &nm,
+        )
+        .await?;
 
         service_names.push(svc_config.name.clone());
         service_hosts.insert(svc_config.name.clone(), container_name);
@@ -167,6 +61,206 @@ pub(super) async fn start_shared_services(
         service_hosts,
         network_name: Some(network_name),
     })
+}
+
+async fn start_or_reuse_shared_service(
+    project: &str,
+    svc_config: &SharedServiceConfig,
+    container_name: &str,
+    network_name: &str,
+    docker: &bollard::Docker,
+    state: &AppState,
+    network_manager: &coast_docker::network::NetworkManager,
+) -> Result<()> {
+    if shared_service_already_running(project, &svc_config.name, container_name, state, docker)
+        .await?
+    {
+        info!(
+            service = %svc_config.name,
+            "shared service already running, skipping"
+        );
+        return Ok(());
+    }
+
+    recreate_shared_service(
+        project,
+        svc_config,
+        container_name,
+        network_name,
+        docker,
+        network_manager,
+    )
+    .await?;
+    record_shared_service_running(project, &svc_config.name, container_name, state).await;
+
+    info!(
+        service = %svc_config.name,
+        container = %container_name,
+        "shared service started on host daemon"
+    );
+
+    Ok(())
+}
+
+async fn shared_service_already_running(
+    project: &str,
+    service_name: &str,
+    container_name: &str,
+    state: &AppState,
+    docker: &bollard::Docker,
+) -> Result<bool> {
+    let existing = {
+        let db = state.db.lock().await;
+        db.get_shared_service(project, service_name)?
+    };
+
+    if !has_running_shared_service_record(existing.as_ref().map(|rec| rec.status.as_str())) {
+        return Ok(false);
+    }
+
+    Ok(docker.inspect_container(container_name, None).await.is_ok())
+}
+
+fn has_running_shared_service_record(status: Option<&str>) -> bool {
+    status == Some("running")
+}
+
+async fn recreate_shared_service(
+    project: &str,
+    svc_config: &SharedServiceConfig,
+    container_name: &str,
+    network_name: &str,
+    docker: &bollard::Docker,
+    network_manager: &coast_docker::network::NetworkManager,
+) -> Result<()> {
+    remove_existing_shared_service(container_name, docker).await;
+    create_shared_service_container(project, svc_config, container_name, docker).await?;
+    start_shared_service_container(svc_config, container_name, docker).await?;
+    connect_shared_service_to_network(network_name, container_name, network_manager).await;
+    Ok(())
+}
+
+async fn remove_existing_shared_service(container_name: &str, docker: &bollard::Docker) {
+    let _ = docker.stop_container(container_name, None).await;
+    let _ = docker.remove_container(container_name, None).await;
+}
+
+async fn create_shared_service_container(
+    project: &str,
+    svc_config: &SharedServiceConfig,
+    container_name: &str,
+    docker: &bollard::Docker,
+) -> Result<()> {
+    let shared_cfg = crate::shared_services::build_shared_container_config(project, svc_config);
+    let host_config = bollard::models::HostConfig {
+        binds: Some(shared_cfg.volumes.clone()),
+        port_bindings: Some(build_port_bindings(&svc_config.ports)),
+        restart_policy: Some(bollard::models::RestartPolicy {
+            name: Some(bollard::models::RestartPolicyNameEnum::UNLESS_STOPPED),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let create_config = bollard::container::Config {
+        image: Some(shared_cfg.image.clone()),
+        env: Some(shared_cfg.env.clone()),
+        host_config: Some(host_config),
+        labels: Some(shared_cfg.labels.clone()),
+        exposed_ports: Some(build_exposed_ports(&svc_config.ports)),
+        ..Default::default()
+    };
+
+    let create_opts = bollard::container::CreateContainerOptions {
+        name: container_name.to_string(),
+        ..Default::default()
+    };
+
+    docker
+        .create_container(Some(create_opts), create_config)
+        .await
+        .map_err(|e| {
+            CoastError::docker(format!(
+                "Failed to create shared service container '{}': {}",
+                container_name, e
+            ))
+        })?;
+
+    Ok(())
+}
+
+fn build_port_bindings(
+    ports: &[u16],
+) -> HashMap<String, Option<Vec<bollard::models::PortBinding>>> {
+    let mut port_bindings = HashMap::new();
+    for port in ports {
+        port_bindings.insert(
+            format!("{port}/tcp"),
+            Some(vec![bollard::models::PortBinding {
+                host_ip: Some("0.0.0.0".to_string()),
+                host_port: Some(port.to_string()),
+            }]),
+        );
+    }
+    port_bindings
+}
+
+fn build_exposed_ports(ports: &[u16]) -> HashMap<String, HashMap<(), ()>> {
+    let mut exposed_ports = HashMap::new();
+    for port in ports {
+        exposed_ports.insert(format!("{port}/tcp"), HashMap::new());
+    }
+    exposed_ports
+}
+
+async fn start_shared_service_container(
+    svc_config: &SharedServiceConfig,
+    container_name: &str,
+    docker: &bollard::Docker,
+) -> Result<()> {
+    docker
+        .start_container::<String>(container_name, None)
+        .await
+        .map_err(|e| {
+            let raw = e.to_string();
+            if let Some(msg) = humanize_port_conflict(&raw, &svc_config.name, &svc_config.ports) {
+                CoastError::docker(msg)
+            } else {
+                CoastError::docker(format!(
+                    "Failed to start shared service container '{}': {}",
+                    container_name, e
+                ))
+            }
+        })?;
+
+    Ok(())
+}
+
+async fn connect_shared_service_to_network(
+    network_name: &str,
+    container_name: &str,
+    network_manager: &coast_docker::network::NetworkManager,
+) {
+    if let Err(e) = network_manager
+        .connect_container(network_name, container_name)
+        .await
+    {
+        tracing::warn!(
+            error = %e,
+            container = %container_name,
+            "failed to connect shared service to network (may already be connected)"
+        );
+    }
+}
+
+async fn record_shared_service_running(
+    project: &str,
+    service_name: &str,
+    container_name: &str,
+    state: &AppState,
+) {
+    let db = state.db.lock().await;
+    let _ = db.insert_shared_service(project, service_name, Some(container_name), "running");
 }
 
 /// Rewrite a raw Docker "port already allocated" error into a human-friendly message.
@@ -207,4 +301,70 @@ fn humanize_port_conflict(raw: &str, service_name: &str, declared_ports: &[u16])
          \n\
          Stop the conflicting process and try again."
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_has_running_shared_service_record_only_for_running_status() {
+        assert!(has_running_shared_service_record(Some("running")));
+        assert!(!has_running_shared_service_record(Some("stopped")));
+        assert!(!has_running_shared_service_record(None));
+    }
+
+    #[test]
+    fn test_build_port_bindings_maps_all_declared_ports() {
+        let port_bindings = build_port_bindings(&[5432, 6379]);
+
+        assert_eq!(port_bindings.len(), 2);
+        let postgres = port_bindings
+            .get("5432/tcp")
+            .and_then(|bindings| bindings.as_ref())
+            .and_then(|bindings| bindings.first())
+            .unwrap();
+        assert_eq!(postgres.host_ip.as_deref(), Some("0.0.0.0"));
+        assert_eq!(postgres.host_port.as_deref(), Some("5432"));
+
+        let redis = port_bindings
+            .get("6379/tcp")
+            .and_then(|bindings| bindings.as_ref())
+            .and_then(|bindings| bindings.first())
+            .unwrap();
+        assert_eq!(redis.host_port.as_deref(), Some("6379"));
+    }
+
+    #[test]
+    fn test_build_exposed_ports_maps_all_declared_ports() {
+        let exposed_ports = build_exposed_ports(&[5432, 6379]);
+
+        assert_eq!(exposed_ports.len(), 2);
+        assert!(exposed_ports.contains_key("5432/tcp"));
+        assert!(exposed_ports.contains_key("6379/tcp"));
+        assert!(exposed_ports["5432/tcp"].is_empty());
+    }
+
+    #[test]
+    fn test_humanize_port_conflict_extracts_specific_bound_port() {
+        let raw = "driver failed programming external connectivity on endpoint foo: Bind for 0.0.0.0:6379 failed: port is already allocated";
+        let message = humanize_port_conflict(raw, "redis", &[6379]).unwrap();
+
+        assert!(message.contains("Port 6379 is already in use on the host."));
+        assert!(message.contains("shared service 'redis'"));
+        assert!(message.contains("lsof -iTCP:6379 -sTCP:LISTEN"));
+    }
+
+    #[test]
+    fn test_humanize_port_conflict_falls_back_to_declared_ports_when_bind_is_missing() {
+        let raw = "failed to start container: port is already allocated";
+        let message = humanize_port_conflict(raw, "postgres", &[5432, 6432]).unwrap();
+
+        assert!(message.contains("Port 5432, 6432 is already in use on the host."));
+    }
+
+    #[test]
+    fn test_humanize_port_conflict_ignores_other_errors() {
+        assert!(humanize_port_conflict("permission denied", "redis", &[6379]).is_none());
+    }
 }
