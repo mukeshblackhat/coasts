@@ -284,7 +284,9 @@ pub fn request_context(req: &Request) -> (Option<&str>, Option<&str>) {
         | Request::Docs(_)
         | Request::SearchDocs(_)
         | Request::SetLanguage(_)
-        | Request::SetAnalytics(_) => (None, None),
+        | Request::SetAnalytics(_)
+        | Request::IsSafeToUpdate(_)
+        | Request::PrepareForUpdate(_) => (None, None),
         Request::Lookup(r) => (Some(&r.project), None),
         Request::RerunExtractors(r) => (Some(&r.project), None),
         Request::Run(r) => (Some(&r.project), Some(&r.name)),
@@ -488,6 +490,8 @@ pub fn request_command_name(req: &Request) -> String {
         }
         .into(),
         Request::Lookup(_) => "lookup".into(),
+        Request::IsSafeToUpdate(_) => "update/is_safe_to_update".into(),
+        Request::PrepareForUpdate(_) => "update/prepare_for_update".into(),
     }
 }
 
@@ -636,6 +640,8 @@ mod tests {
             Request::SetAnalytics(SetAnalyticsRequest {
                 action: AnalyticsAction::Status,
             }),
+            Request::IsSafeToUpdate(UpdateSafetyRequest::default()),
+            Request::PrepareForUpdate(PrepareForUpdateRequest::default()),
         ];
 
         for req in &variants {
@@ -645,7 +651,7 @@ mod tests {
 
         // Verify count matches enum variant count (compile error if a new
         // variant is added without updating the match above)
-        assert_eq!(variants.len(), 29);
+        assert_eq!(variants.len(), 31);
     }
 
     #[tokio::test]
@@ -898,6 +904,10 @@ mod tests {
                 name: String::new(),
             })),
             "stop"
+        );
+        assert_eq!(
+            request_command_name(&Request::IsSafeToUpdate(UpdateSafetyRequest::default())),
+            "update/is_safe_to_update"
         );
     }
 

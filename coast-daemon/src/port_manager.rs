@@ -409,6 +409,10 @@ fn process_looks_stale(pid: u32) -> bool {
     }
 }
 
+pub(crate) fn socat_pid_is_stale(pid: u32) -> bool {
+    process_looks_stale(pid)
+}
+
 pub fn spawn_socat_verified(cmd: &[String], listen_port: u16) -> Result<u32> {
     let pid = spawn_socat(cmd)?;
     let deadline = Instant::now() + Duration::from_millis(250);

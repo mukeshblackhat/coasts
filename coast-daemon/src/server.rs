@@ -2,7 +2,9 @@
 ///
 /// Accepts connections on `~/.coast/coastd.sock`, reads JSON requests,
 /// dispatches them to handlers, and writes JSON responses back.
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -19,6 +21,97 @@ use crate::analytics::{self, AnalyticsClient, CommandSource};
 use crate::api::streaming::spawn_agent_shell_if_configured;
 use crate::handlers;
 use crate::state::StateDb;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateOperationKind {
+    Build,
+    RerunExtractors,
+    Run,
+    Assign,
+    Unassign,
+    Start,
+    Stop,
+    Rm,
+    Checkout,
+    Rebuild,
+    RestartServices,
+    RmBuild,
+    ArchiveProject,
+    UnarchiveProject,
+    SharedStart,
+    SharedStop,
+    SharedRestart,
+    SharedRm,
+    SecretSet,
+    ServiceStart,
+    ServiceStop,
+    ServiceRestart,
+    ServiceRm,
+    BareServiceStart,
+    BareServiceStop,
+    BareServiceRestart,
+    ClearLogs,
+    UploadToContainer,
+    UploadToHost,
+}
+
+impl UpdateOperationKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Build => "build",
+            Self::RerunExtractors => "rerun_extractors",
+            Self::Run => "run",
+            Self::Assign => "assign",
+            Self::Unassign => "unassign",
+            Self::Start => "start",
+            Self::Stop => "stop",
+            Self::Rm => "rm",
+            Self::Checkout => "checkout",
+            Self::Rebuild => "rebuild",
+            Self::RestartServices => "restart_services",
+            Self::RmBuild => "rm_build",
+            Self::ArchiveProject => "archive_project",
+            Self::UnarchiveProject => "unarchive_project",
+            Self::SharedStart => "shared_start",
+            Self::SharedStop => "shared_stop",
+            Self::SharedRestart => "shared_restart",
+            Self::SharedRm => "shared_rm",
+            Self::SecretSet => "secret_set",
+            Self::ServiceStart => "service_start",
+            Self::ServiceStop => "service_stop",
+            Self::ServiceRestart => "service_restart",
+            Self::ServiceRm => "service_rm",
+            Self::BareServiceStart => "bare_service_start",
+            Self::BareServiceStop => "bare_service_stop",
+            Self::BareServiceRestart => "bare_service_restart",
+            Self::ClearLogs => "clear_logs",
+            Self::UploadToContainer => "upload_to_container",
+            Self::UploadToHost => "upload_to_host",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ActiveUpdateOperation {
+    pub id: uuid::Uuid,
+    pub kind: UpdateOperationKind,
+    pub project: Option<String>,
+    pub instance: Option<String>,
+    pub started_at: chrono::DateTime<chrono::Utc>,
+}
+
+pub struct UpdateOperationGuard {
+    active_ops: Arc<std::sync::Mutex<HashMap<uuid::Uuid, ActiveUpdateOperation>>>,
+    id: uuid::Uuid,
+}
+
+impl Drop for UpdateOperationGuard {
+    fn drop(&mut self) {
+        if let Ok(mut ops) = self.active_ops.lock() {
+            ops.remove(&self.id);
+        }
+    }
+}
 
 /// Shared application state accessible from all handler tasks.
 pub struct AppState {
@@ -84,6 +177,10 @@ pub struct AppState {
     /// Watch channel sender for the analytics toggle. The background worker
     /// checks this at flush time.
     pub analytics_enabled_tx: tokio::sync::watch::Sender<bool>,
+    /// Reject new mutating requests while the daemon is preparing for self-update.
+    pub update_quiescing: Arc<AtomicBool>,
+    /// Explicit registry of currently active mutating operations.
+    pub active_update_operations: Arc<std::sync::Mutex<HashMap<uuid::Uuid, ActiveUpdateOperation>>>,
 }
 
 impl AppState {
@@ -130,6 +227,8 @@ impl AppState {
             language_rx,
             analytics: analytics_client,
             analytics_enabled_tx,
+            update_quiescing: Arc::new(AtomicBool::new(false)),
+            active_update_operations: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
     }
 
@@ -163,6 +262,8 @@ impl AppState {
             language_rx,
             analytics: AnalyticsClient::noop(),
             analytics_enabled_tx,
+            update_quiescing: Arc::new(AtomicBool::new(false)),
+            active_update_operations: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
     }
 
@@ -196,6 +297,58 @@ impl AppState {
         map.entry(project.to_string())
             .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(1)))
             .clone()
+    }
+
+    /// Whether the daemon is currently blocking new mutating work for self-update.
+    pub fn is_update_quiescing(&self) -> bool {
+        self.update_quiescing.load(Ordering::SeqCst)
+    }
+
+    /// Enable or disable self-update quiescing.
+    pub fn set_update_quiescing(&self, value: bool) {
+        self.update_quiescing.store(value, Ordering::SeqCst);
+    }
+
+    /// Register a mutating operation so update preparation can wait for it.
+    pub fn begin_update_operation(
+        &self,
+        kind: UpdateOperationKind,
+        project: Option<&str>,
+        instance: Option<&str>,
+    ) -> Result<UpdateOperationGuard> {
+        if self.is_update_quiescing() {
+            return Err(CoastError::state(
+                "coastd is preparing for an update. Wait for the update to finish before starting another mutating operation.",
+            ));
+        }
+
+        let id = uuid::Uuid::new_v4();
+        let operation = ActiveUpdateOperation {
+            id,
+            kind,
+            project: project.map(std::string::ToString::to_string),
+            instance: instance.map(std::string::ToString::to_string),
+            started_at: chrono::Utc::now(),
+        };
+        let mut ops = self
+            .active_update_operations
+            .lock()
+            .map_err(|_| CoastError::state("failed to lock update-operation registry"))?;
+        ops.insert(id, operation);
+        drop(ops);
+
+        Ok(UpdateOperationGuard {
+            active_ops: Arc::clone(&self.active_update_operations),
+            id,
+        })
+    }
+
+    /// Snapshot the currently active mutating operations.
+    pub fn active_update_operations(&self) -> Vec<ActiveUpdateOperation> {
+        self.active_update_operations
+            .lock()
+            .map(|ops| ops.values().cloned().collect())
+            .unwrap_or_default()
     }
 
     /// Emit an event to all connected WebSocket clients.
@@ -475,6 +628,25 @@ async fn write_response(
     Ok(())
 }
 
+async fn begin_streaming_update_operation(
+    state: &AppState,
+    kind: UpdateOperationKind,
+    project: Option<&str>,
+    instance: Option<&str>,
+    writer: &mut tokio::net::unix::OwnedWriteHalf,
+) -> Result<Option<UpdateOperationGuard>> {
+    match state.begin_update_operation(kind, project, instance) {
+        Ok(guard) => Ok(Some(guard)),
+        Err(error) => {
+            let response = Response::Error(ErrorResponse {
+                error: error.to_string(),
+            });
+            write_response(writer, &response).await?;
+            Ok(None)
+        }
+    }
+}
+
 /// Handle a build request with streaming progress output.
 ///
 /// Creates an mpsc channel, runs the build handler concurrently with a
@@ -493,6 +665,17 @@ async fn handle_build_streaming(
         Some(state.project_semaphore(&project_name).await)
     } else {
         None
+    };
+    let Some(_operation_guard) = begin_streaming_update_operation(
+        state,
+        UpdateOperationKind::Build,
+        (!project_name.is_empty()).then_some(project_name.as_str()),
+        None,
+        writer,
+    )
+    .await?
+    else {
+        return Ok(());
     };
     let _permit = match &sem {
         Some(s) => Some(
@@ -609,6 +792,18 @@ async fn handle_run_streaming(
     state: &Arc<AppState>,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
+    let Some(_operation_guard) = begin_streaming_update_operation(
+        state,
+        UpdateOperationKind::Run,
+        Some(&req.project),
+        Some(&req.name),
+        writer,
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+
     {
         let db = state.db.lock().await;
         let enqueued_inst = coast_core::types::CoastInstance {
@@ -711,6 +906,18 @@ async fn handle_rerun_extractors_streaming(
     state: &AppState,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
+    let Some(_operation_guard) = begin_streaming_update_operation(
+        state,
+        UpdateOperationKind::RerunExtractors,
+        Some(&req.project),
+        None,
+        writer,
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+
     let (tx, mut rx) = tokio::sync::mpsc::channel::<BuildProgressEvent>(64);
 
     let mut rerun_future = std::pin::pin!(handlers::handle_rerun_extractors_with_progress(
@@ -767,6 +974,18 @@ async fn handle_assign_streaming(
     state: &AppState,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
+    let Some(_operation_guard) = begin_streaming_update_operation(
+        state,
+        UpdateOperationKind::Assign,
+        Some(&req.project),
+        Some(&req.name),
+        writer,
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+
     let sem = state.project_semaphore(&req.project).await;
     let _permit = sem
         .acquire()
@@ -824,6 +1043,18 @@ async fn handle_unassign_streaming(
     state: &AppState,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
+    let Some(_operation_guard) = begin_streaming_update_operation(
+        state,
+        UpdateOperationKind::Unassign,
+        Some(&req.project),
+        Some(&req.name),
+        writer,
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+
     let sem = state.project_semaphore(&req.project).await;
     let _permit = sem
         .acquire()
@@ -882,6 +1113,18 @@ async fn handle_start_streaming(
     state: &AppState,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
+    let Some(_operation_guard) = begin_streaming_update_operation(
+        state,
+        UpdateOperationKind::Start,
+        Some(&req.project),
+        Some(&req.name),
+        writer,
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+
     let sem = state.project_semaphore(&req.project).await;
     let _permit = sem
         .acquire()
@@ -939,6 +1182,18 @@ async fn handle_stop_streaming(
     state: &AppState,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
+    let Some(_operation_guard) = begin_streaming_update_operation(
+        state,
+        UpdateOperationKind::Stop,
+        Some(&req.project),
+        Some(&req.name),
+        writer,
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+
     let sem = state.project_semaphore(&req.project).await;
     let _permit = sem
         .acquire()
@@ -996,6 +1251,18 @@ async fn handle_rm_build_streaming(
     state: &AppState,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
+    let Some(_operation_guard) = begin_streaming_update_operation(
+        state,
+        UpdateOperationKind::RmBuild,
+        Some(&req.project),
+        None,
+        writer,
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+
     let sem = state.project_semaphore(&req.project).await;
     let _permit = sem
         .acquire()
@@ -1047,6 +1314,170 @@ async fn handle_rm_build_streaming(
     write_response(writer, &final_response).await
 }
 
+fn update_operation_error_response(error: &CoastError) -> Response {
+    Response::Error(ErrorResponse {
+        error: error.to_string(),
+    })
+}
+
+fn begin_socket_update_operation(
+    state: &AppState,
+    kind: UpdateOperationKind,
+    project: Option<&str>,
+    instance: Option<&str>,
+) -> std::result::Result<UpdateOperationGuard, Box<Response>> {
+    state
+        .begin_update_operation(kind, project, instance)
+        .map_err(|error| Box::new(update_operation_error_response(&error)))
+}
+
+async fn dispatch_rm_request(
+    req: coast_core::protocol::RmRequest,
+    state: &Arc<AppState>,
+) -> Response {
+    let project = req.project.clone();
+    let name = req.name.clone();
+    match begin_socket_update_operation(state, UpdateOperationKind::Rm, Some(&project), Some(&name))
+    {
+        Ok(_guard) => handlers::handle_rm(req, state).await,
+        Err(response) => *response,
+    }
+}
+
+async fn dispatch_checkout_request(
+    req: coast_core::protocol::CheckoutRequest,
+    state: &Arc<AppState>,
+) -> Response {
+    let project = req.project.clone();
+    let instance = req.name.clone();
+    match begin_socket_update_operation(
+        state,
+        UpdateOperationKind::Checkout,
+        Some(&project),
+        instance.as_deref(),
+    ) {
+        Ok(_guard) => handlers::handle_checkout(req, state).await,
+        Err(response) => *response,
+    }
+}
+
+async fn dispatch_secret_request(
+    req: coast_core::protocol::SecretRequest,
+    state: &Arc<AppState>,
+) -> Response {
+    match &req {
+        coast_core::protocol::SecretRequest::Set {
+            instance, project, ..
+        } => match begin_socket_update_operation(
+            state,
+            UpdateOperationKind::SecretSet,
+            Some(project),
+            Some(instance),
+        ) {
+            Ok(_guard) => handlers::handle_secret(req, state).await,
+            Err(response) => *response,
+        },
+        coast_core::protocol::SecretRequest::List { .. } => {
+            handlers::handle_secret(req, state).await
+        }
+    }
+}
+
+async fn dispatch_shared_request(
+    req: coast_core::protocol::SharedRequest,
+    state: &Arc<AppState>,
+) -> Response {
+    let kind = match &req {
+        coast_core::protocol::SharedRequest::Ps { .. } => None,
+        coast_core::protocol::SharedRequest::Stop { .. } => Some(UpdateOperationKind::SharedStop),
+        coast_core::protocol::SharedRequest::Start { .. } => Some(UpdateOperationKind::SharedStart),
+        coast_core::protocol::SharedRequest::Restart { .. } => {
+            Some(UpdateOperationKind::SharedRestart)
+        }
+        coast_core::protocol::SharedRequest::Rm { .. } => Some(UpdateOperationKind::SharedRm),
+    };
+    let project = match &req {
+        coast_core::protocol::SharedRequest::Ps { project }
+        | coast_core::protocol::SharedRequest::Stop { project, .. }
+        | coast_core::protocol::SharedRequest::Start { project, .. }
+        | coast_core::protocol::SharedRequest::Restart { project, .. }
+        | coast_core::protocol::SharedRequest::Rm { project, .. } => project.clone(),
+    };
+    match kind {
+        Some(kind) => match begin_socket_update_operation(state, kind, Some(&project), None) {
+            Ok(_guard) => handlers::handle_shared(req, state).await,
+            Err(response) => *response,
+        },
+        None => handlers::handle_shared(req, state).await,
+    }
+}
+
+async fn dispatch_rebuild_request(
+    req: coast_core::protocol::RebuildRequest,
+    state: &Arc<AppState>,
+) -> Response {
+    let project = req.project.clone();
+    let name = req.name.clone();
+    match begin_socket_update_operation(
+        state,
+        UpdateOperationKind::Rebuild,
+        Some(&project),
+        Some(&name),
+    ) {
+        Ok(_guard) => handlers::handle_rebuild(req, state).await,
+        Err(response) => *response,
+    }
+}
+
+async fn dispatch_restart_services_request(
+    req: coast_core::protocol::RestartServicesRequest,
+    state: &Arc<AppState>,
+) -> Response {
+    let project = req.project.clone();
+    let name = req.name.clone();
+    match begin_socket_update_operation(
+        state,
+        UpdateOperationKind::RestartServices,
+        Some(&project),
+        Some(&name),
+    ) {
+        Ok(_guard) => handlers::handle_restart_services(req, state).await,
+        Err(response) => *response,
+    }
+}
+
+async fn dispatch_archive_request(
+    req: coast_core::protocol::ArchiveProjectRequest,
+    state: &Arc<AppState>,
+) -> Response {
+    let project = req.project.clone();
+    match begin_socket_update_operation(
+        state,
+        UpdateOperationKind::ArchiveProject,
+        Some(&project),
+        None,
+    ) {
+        Ok(_guard) => handlers::handle_archive_project(req, state).await,
+        Err(response) => *response,
+    }
+}
+
+async fn dispatch_unarchive_request(
+    req: coast_core::protocol::UnarchiveProjectRequest,
+    state: &Arc<AppState>,
+) -> Response {
+    let project = req.project.clone();
+    match begin_socket_update_operation(
+        state,
+        UpdateOperationKind::UnarchiveProject,
+        Some(&project),
+        None,
+    ) {
+        Ok(_guard) => handlers::handle_unarchive_project(req, state).await,
+        Err(response) => *response,
+    }
+}
+
 /// Dispatch a decoded request to the appropriate handler.
 async fn dispatch_request(request: Request, state: &Arc<AppState>) -> Response {
     match request {
@@ -1057,8 +1488,8 @@ async fn dispatch_request(request: Request, state: &Arc<AppState>) -> Response {
         Request::Run(_) => unreachable!("run requests handled by handle_run_streaming"),
         Request::Stop(_) => unreachable!("stop requests handled by handle_stop_streaming"),
         Request::Start(_) => unreachable!("start requests handled by handle_start_streaming"),
-        Request::Rm(req) => handlers::handle_rm(req, state).await,
-        Request::Checkout(req) => handlers::handle_checkout(req, state).await,
+        Request::Rm(req) => dispatch_rm_request(req, state).await,
+        Request::Checkout(req) => dispatch_checkout_request(req, state).await,
         Request::Ports(req) => handlers::handle_ports(req, state).await,
         Request::Exec(req) => handlers::handle_exec(req, state).await,
         Request::Logs(req) => handlers::handle_logs(req, state).await,
@@ -1067,19 +1498,19 @@ async fn dispatch_request(request: Request, state: &Arc<AppState>) -> Response {
         Request::Lookup(req) => handlers::handle_lookup(req, state).await,
         Request::Docs(req) => handlers::handle_docs(req, state).await,
         Request::SearchDocs(req) => handlers::handle_search_docs(req, state).await,
-        Request::Secret(req) => handlers::handle_secret(req, state).await,
-        Request::Shared(req) => handlers::handle_shared(req, state).await,
+        Request::Secret(req) => dispatch_secret_request(req, state).await,
+        Request::Shared(req) => dispatch_shared_request(req, state).await,
         Request::Assign(_) => unreachable!("assign requests handled by handle_assign_streaming"),
         Request::Unassign(_) => {
             unreachable!("unassign requests handled by handle_unassign_streaming")
         }
-        Request::Rebuild(req) => handlers::handle_rebuild(req, state).await,
-        Request::RestartServices(req) => handlers::handle_restart_services(req, state).await,
+        Request::Rebuild(req) => dispatch_rebuild_request(req, state).await,
+        Request::RestartServices(req) => dispatch_restart_services_request(req, state).await,
         Request::RmBuild(_) => {
             unreachable!("rm-build requests handled by handle_rm_build_streaming")
         }
-        Request::ArchiveProject(req) => handlers::handle_archive_project(req, state).await,
-        Request::UnarchiveProject(req) => handlers::handle_unarchive_project(req, state).await,
+        Request::ArchiveProject(req) => dispatch_archive_request(req, state).await,
+        Request::UnarchiveProject(req) => dispatch_unarchive_request(req, state).await,
         Request::Builds(req) => handlers::handle_builds(req, state).await,
         Request::McpLs(req) => handlers::handle_mcp_ls(req, state).await,
         Request::McpTools(req) => handlers::handle_mcp_tools(req, state).await,
@@ -1087,6 +1518,8 @@ async fn dispatch_request(request: Request, state: &Arc<AppState>) -> Response {
         Request::AgentShell(req) => handlers::handle_agent_shell(req, state).await,
         Request::SetLanguage(req) => handlers::handle_set_language(req, state).await,
         Request::SetAnalytics(req) => handlers::handle_set_analytics(req, state).await,
+        Request::IsSafeToUpdate(req) => handlers::handle_is_safe_to_update(req, state).await,
+        Request::PrepareForUpdate(req) => handlers::handle_prepare_for_update(req, state).await,
     }
 }
 
@@ -1249,5 +1682,31 @@ mod tests {
 
         let _ = shutdown_tx.send(());
         let _ = server_handle.await;
+    }
+
+    #[test]
+    fn test_begin_update_operation_rejects_when_quiescing() {
+        let db = StateDb::open_in_memory().unwrap();
+        let state = AppState::new_for_testing(db);
+        state.set_update_quiescing(true);
+
+        let result =
+            state.begin_update_operation(UpdateOperationKind::Run, Some("proj"), Some("dev-1"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_operation_guard_unregisters_on_drop() {
+        let db = StateDb::open_in_memory().unwrap();
+        let state = AppState::new_for_testing(db);
+
+        {
+            let _guard = state
+                .begin_update_operation(UpdateOperationKind::Build, Some("proj"), None)
+                .unwrap();
+            assert_eq!(state.active_update_operations().len(), 1);
+        }
+
+        assert!(state.active_update_operations().is_empty());
     }
 }

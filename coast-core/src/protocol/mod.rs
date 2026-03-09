@@ -105,6 +105,10 @@ pub enum Request {
     SetAnalytics(SetAnalyticsRequest),
     /// Look up coast instances for the caller's current worktree.
     Lookup(LookupRequest),
+    /// Query whether the daemon is in a safe state for self-update.
+    IsSafeToUpdate(UpdateSafetyRequest),
+    /// Drain mutating work and prepare the daemon for self-update.
+    PrepareForUpdate(PrepareForUpdateRequest),
 }
 
 /// A response from the daemon to the CLI.
@@ -194,6 +198,10 @@ pub enum Response {
     SetAnalytics(SetAnalyticsResponse),
     /// Lookup result for the caller's current worktree.
     Lookup(LookupResponse),
+    /// Structured self-update safety report.
+    UpdateSafety(UpdateSafetyResponse),
+    /// Result of preparing the daemon for self-update.
+    PrepareForUpdate(PrepareForUpdateResponse),
     /// Error response.
     Error(ErrorResponse),
 }

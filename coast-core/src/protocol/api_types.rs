@@ -364,6 +364,85 @@ pub struct UpdateApplyResponse {
     pub version: String,
 }
 
+/// Request to query whether the daemon is in a safe state for self-update.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct UpdateSafetyRequest {}
+
+/// Classification for an update-safety issue.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateSafetyIssueKind {
+    InstanceStatus,
+    ActiveOperation,
+    DockerUnavailable,
+    InteractiveSession,
+    StaleResource,
+}
+
+/// A single blocker or warning found while evaluating update safety.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+pub struct UpdateSafetyIssue {
+    pub kind: UpdateSafetyIssueKind,
+    #[serde(default)]
+    pub project: Option<String>,
+    #[serde(default)]
+    pub instance: Option<String>,
+    #[serde(default)]
+    pub operation: Option<String>,
+    pub summary: String,
+    #[serde(default)]
+    pub suggested_action: Option<String>,
+}
+
+/// Structured update-safety report returned by the daemon.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+pub struct UpdateSafetyResponse {
+    pub safe: bool,
+    pub quiescing: bool,
+    pub blockers: Vec<UpdateSafetyIssue>,
+    pub warnings: Vec<UpdateSafetyIssue>,
+}
+
+/// Request to drain mutating work and prepare the daemon for self-update.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+pub struct PrepareForUpdateRequest {
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub close_sessions: bool,
+    #[serde(default)]
+    pub stop_running_instances: bool,
+    #[serde(default)]
+    pub stop_shared_services: bool,
+}
+
+impl Default for PrepareForUpdateRequest {
+    fn default() -> Self {
+        Self {
+            timeout_ms: Some(30_000),
+            close_sessions: false,
+            stop_running_instances: false,
+            stop_shared_services: false,
+        }
+    }
+}
+
+/// Response after attempting to prepare the daemon for self-update.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PrepareForUpdateResponse {
+    pub ready: bool,
+    pub quiescing: bool,
+    pub timed_out: bool,
+    pub actions: Vec<String>,
+    pub report: UpdateSafetyResponse,
+}
+
 /// Client-to-server resize command (sent after 0x01 prefix byte).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]

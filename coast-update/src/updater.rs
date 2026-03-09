@@ -4,20 +4,50 @@ use semver::Version;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Find the `coastd` binary path, using the same resolution logic as the CLI.
+fn resolved_binary_names(current_name: &str) -> (String, String) {
+    if current_name == "coastd" || current_name.starts_with("coastd-") {
+        let suffix = &current_name["coastd".len()..];
+        return (format!("coast{suffix}"), format!("coastd{suffix}"));
+    }
+    if current_name == "coast" || current_name.starts_with("coast-") {
+        let suffix = &current_name["coast".len()..];
+        return (format!("coast{suffix}"), format!("coastd{suffix}"));
+    }
+    ("coast".to_string(), "coastd".to_string())
+}
+
+/// Find the `coast` and `coastd` binary paths using the current executable name.
 ///
-/// Looks for `coastd` next to the current `coast` executable first,
-/// then falls back to `coastd` on PATH.
-pub fn resolve_coastd_path() -> PathBuf {
+/// When the updater is invoked from `coastd`, this still resolves the matching
+/// `coast` sibling so both binaries can be updated together.
+pub fn resolve_binary_paths() -> (PathBuf, PathBuf) {
     if let Ok(exe) = std::env::current_exe() {
+        let current_name = exe.file_name().unwrap_or_default().to_string_lossy();
+        let (coast_name, coastd_name) = resolved_binary_names(&current_name);
         if let Some(dir) = exe.parent() {
-            let sibling = dir.join("coastd");
-            if sibling.exists() {
-                return sibling;
-            }
+            let coast_path = dir.join(&coast_name);
+            let coastd_path = dir.join(&coastd_name);
+            return (
+                if coast_path.exists() {
+                    coast_path
+                } else {
+                    PathBuf::from(coast_name)
+                },
+                if coastd_path.exists() {
+                    coastd_path
+                } else {
+                    PathBuf::from(coastd_name)
+                },
+            );
         }
     }
-    PathBuf::from("coastd")
+    (PathBuf::from("coast"), PathBuf::from("coastd"))
+}
+
+/// Find the `coastd` binary path, using the same resolution logic as the CLI.
+pub fn resolve_coastd_path() -> PathBuf {
+    let (_coast_path, coastd_path) = resolve_binary_paths();
+    coastd_path
 }
 
 /// Detect the current platform and return (os, arch) strings matching
@@ -91,9 +121,7 @@ pub async fn download_release(
 ///
 /// This is as close to atomic as we can get on most filesystems.
 pub fn apply_update(tarball_path: &Path) -> Result<(), UpdateError> {
-    let coast_path = std::env::current_exe()
-        .map_err(|e| UpdateError::ApplyFailed(format!("Cannot determine current exe: {e}")))?;
-    let coastd_path = resolve_coastd_path();
+    let (coast_path, coastd_path) = resolve_binary_paths();
 
     let extract_dir = tarball_path
         .parent()
@@ -129,10 +157,10 @@ pub fn apply_update(tarball_path: &Path) -> Result<(), UpdateError> {
         ));
     }
 
-    // Replace coast binary
-    replace_binary(&new_coast, &coast_path)?;
+    if coast_path.is_absolute() || coast_path.exists() {
+        replace_binary(&new_coast, &coast_path)?;
+    }
 
-    // Replace coastd binary (only if it's a real path, not just "coastd" from PATH)
     if coastd_path.is_absolute() || coastd_path.exists() {
         replace_binary(&new_coastd, &coastd_path)?;
     }
@@ -251,6 +279,30 @@ mod tests {
             path.is_absolute() || path == PathBuf::from("coastd"),
             "unexpected coastd path: {}",
             path.display()
+        );
+    }
+
+    #[test]
+    fn test_resolved_binary_names_from_cli_binary() {
+        assert_eq!(
+            resolved_binary_names("coast"),
+            ("coast".to_string(), "coastd".to_string())
+        );
+        assert_eq!(
+            resolved_binary_names("coast-dev"),
+            ("coast-dev".to_string(), "coastd-dev".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resolved_binary_names_from_daemon_binary() {
+        assert_eq!(
+            resolved_binary_names("coastd"),
+            ("coast".to_string(), "coastd".to_string())
+        );
+        assert_eq!(
+            resolved_binary_names("coastd-dev"),
+            ("coast-dev".to_string(), "coastd-dev".to_string())
         );
     }
 

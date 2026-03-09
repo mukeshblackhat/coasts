@@ -1071,6 +1071,64 @@ fn test_set_analytics_response_disabled_roundtrip() {
 }
 
 #[test]
+fn test_update_safety_request_roundtrip() {
+    roundtrip_request(Request::IsSafeToUpdate(UpdateSafetyRequest::default()));
+}
+
+#[test]
+fn test_prepare_for_update_request_roundtrip() {
+    roundtrip_request(Request::PrepareForUpdate(PrepareForUpdateRequest {
+        timeout_ms: Some(45_000),
+        close_sessions: true,
+        stop_running_instances: false,
+        stop_shared_services: false,
+    }));
+}
+
+#[test]
+fn test_update_safety_response_roundtrip() {
+    roundtrip_response(Response::UpdateSafety(UpdateSafetyResponse {
+        safe: false,
+        quiescing: true,
+        blockers: vec![UpdateSafetyIssue {
+            kind: UpdateSafetyIssueKind::ActiveOperation,
+            project: Some("my-app".to_string()),
+            instance: Some("dev-1".to_string()),
+            operation: Some("assign".to_string()),
+            summary: "Assign is still in progress".to_string(),
+            suggested_action: Some("Wait for the operation to finish.".to_string()),
+        }],
+        warnings: vec![UpdateSafetyIssue {
+            kind: UpdateSafetyIssueKind::InteractiveSession,
+            project: Some("my-app".to_string()),
+            instance: Some("dev-1".to_string()),
+            operation: None,
+            summary: "An exec session will be disconnected during update.".to_string(),
+            suggested_action: None,
+        }],
+    }));
+}
+
+#[test]
+fn test_prepare_for_update_response_roundtrip() {
+    roundtrip_response(Response::PrepareForUpdate(PrepareForUpdateResponse {
+        ready: true,
+        quiescing: true,
+        timed_out: false,
+        actions: vec![
+            "Blocked new mutating requests.".to_string(),
+            "Closed 2 interactive session(s).".to_string(),
+        ],
+        report: UpdateSafetyResponse {
+            safe: true,
+            quiescing: true,
+            blockers: Vec::new(),
+            warnings: Vec::new(),
+        },
+    }));
+}
+
+#[test]
 fn test_config_analytics_changed_event_serialization() {
     let event = CoastEvent::ConfigAnalyticsChanged { enabled: true };
     let json = serde_json::to_value(&event).unwrap();

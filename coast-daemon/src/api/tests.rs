@@ -1413,6 +1413,121 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_update_is_safe_to_update_reports_provisioning_blocker() {
+        let state = test_state();
+        {
+            let db = state.db.lock().await;
+            db.insert_instance(&CoastInstance {
+                name: "prov-inst".to_string(),
+                status: InstanceStatus::Provisioning,
+                project: "proj".to_string(),
+                branch: Some("main".to_string()),
+                commit_sha: None,
+                container_id: Some("test-container".to_string()),
+                runtime: RuntimeType::Dind,
+                created_at: chrono::Utc::now(),
+                worktree_name: None,
+                build_id: None,
+                coastfile_type: None,
+            })
+            .unwrap();
+        }
+
+        let app = api::api_router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/update/is-safe-to-update")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["safe"], false);
+        assert_eq!(json["blockers"][0]["kind"], "instance_status");
+    }
+
+    #[tokio::test]
+    async fn test_prepare_for_update_endpoint_returns_ready() {
+        let state = test_state();
+        let app = api::api_router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/update/prepare-for-update")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "timeout_ms": 100,
+                            "close_sessions": false,
+                            "stop_running_instances": false,
+                            "stop_shared_services": false
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["ready"], true);
+        assert_eq!(json["report"]["safe"], true);
+    }
+
+    #[tokio::test]
+    async fn test_start_rejected_while_update_quiescing() {
+        let state = test_state();
+        state.set_update_quiescing(true);
+        {
+            let db = state.db.lock().await;
+            let mut inst = make_instance("quiesced-start", "proj", None);
+            inst.status = InstanceStatus::Stopped;
+            db.insert_instance(&inst).unwrap();
+        }
+
+        let app = api::api_router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/start")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "name": "quiesced-start",
+                            "project": "proj"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("preparing for an update"));
+    }
+
+    #[tokio::test]
     async fn test_analytics_track_returns_no_content() {
         let app = test_app();
 

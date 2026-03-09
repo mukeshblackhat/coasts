@@ -15,7 +15,7 @@ use coast_core::protocol::{
 use coast_core::types::{CoastInstance, InstanceStatus, RuntimeType};
 
 use crate::handlers;
-use crate::server::AppState;
+use crate::server::{AppState, UpdateOperationKind};
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -37,6 +37,17 @@ async fn rerun_extractors_sse(
     let (result_tx, result_rx) = tokio::sync::oneshot::channel();
 
     tokio::spawn(async move {
+        let _operation_guard = match state_clone.begin_update_operation(
+            UpdateOperationKind::RerunExtractors,
+            Some(&req.project),
+            None,
+        ) {
+            Ok(guard) => guard,
+            Err(error) => {
+                let _ = result_tx.send(Err(error));
+                return;
+            }
+        };
         let sem = state_clone.project_semaphore(&req.project).await;
         if sem.available_permits() == 0 {
             let _ = tx.try_send(BuildProgressEvent::item(
@@ -98,6 +109,17 @@ async fn build_sse(
         let project_name = coast_core::coastfile::Coastfile::from_file(&req.coastfile_path)
             .map(|cf| cf.name)
             .unwrap_or_default();
+        let _operation_guard = match state_clone.begin_update_operation(
+            UpdateOperationKind::Build,
+            (!project_name.is_empty()).then_some(project_name.as_str()),
+            None,
+        ) {
+            Ok(guard) => guard,
+            Err(error) => {
+                let _ = result_tx.send(Err(error));
+                return;
+            }
+        };
         let sem = if !project_name.is_empty() {
             Some(state_clone.project_semaphore(&project_name).await)
         } else {
@@ -165,6 +187,17 @@ async fn run_sse(
     let (result_tx, result_rx) = tokio::sync::oneshot::channel();
 
     tokio::spawn(async move {
+        let _operation_guard = match state_clone.begin_update_operation(
+            UpdateOperationKind::Run,
+            Some(&req.project),
+            Some(&req.name),
+        ) {
+            Ok(guard) => guard,
+            Err(error) => {
+                let _ = result_tx.send(Err(error));
+                return;
+            }
+        };
         {
             let db = state_clone.db.lock().await;
             let enqueued_inst = CoastInstance {
@@ -271,6 +304,17 @@ async fn assign_sse(
     let (result_tx, result_rx) = tokio::sync::oneshot::channel();
 
     tokio::spawn(async move {
+        let _operation_guard = match state_clone.begin_update_operation(
+            UpdateOperationKind::Assign,
+            Some(&req.project),
+            Some(&req.name),
+        ) {
+            Ok(guard) => guard,
+            Err(error) => {
+                let _ = result_tx.send(Err(error));
+                return;
+            }
+        };
         let sem = state_clone.project_semaphore(&req.project).await;
         if sem.available_permits() == 0 {
             let _ = tx.try_send(BuildProgressEvent::item(
@@ -298,6 +342,17 @@ async fn unassign_sse(
     let (result_tx, result_rx) = tokio::sync::oneshot::channel();
 
     tokio::spawn(async move {
+        let _operation_guard = match state_clone.begin_update_operation(
+            UpdateOperationKind::Unassign,
+            Some(&req.project),
+            Some(&req.name),
+        ) {
+            Ok(guard) => guard,
+            Err(error) => {
+                let _ = result_tx.send(Err(error));
+                return;
+            }
+        };
         let sem = state_clone.project_semaphore(&req.project).await;
         if sem.available_permits() == 0 {
             let _ = tx.try_send(BuildProgressEvent::item(
@@ -387,6 +442,17 @@ async fn rm_build_sse(
     let (result_tx, result_rx) = tokio::sync::oneshot::channel();
 
     tokio::spawn(async move {
+        let _operation_guard = match state_clone.begin_update_operation(
+            UpdateOperationKind::RmBuild,
+            Some(&req.project),
+            None,
+        ) {
+            Ok(guard) => guard,
+            Err(error) => {
+                let _ = result_tx.send(Err(error));
+                return;
+            }
+        };
         let sem = state_clone.project_semaphore(&req.project).await;
         if sem.available_permits() == 0 {
             let _ = tx.try_send(BuildProgressEvent::item(

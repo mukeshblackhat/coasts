@@ -160,6 +160,10 @@ fn daemon_status() -> Result<DaemonStatus> {
     })
 }
 
+pub(crate) fn is_daemon_running() -> Result<bool> {
+    Ok(daemon_status()?.running)
+}
+
 /// Execute the `coast daemon` command.
 pub async fn execute(args: &DaemonArgs) -> Result<()> {
     match &args.action {

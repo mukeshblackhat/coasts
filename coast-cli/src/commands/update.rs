@@ -1,7 +1,12 @@
 /// `coast update` — check for updates and apply them.
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Args, Subcommand};
 use colored::Colorize;
+
+use coast_core::protocol::{
+    PrepareForUpdateRequest, Request, Response, UpdateSafetyIssue, UpdateSafetyRequest,
+    UpdateSafetyResponse,
+};
 
 /// Arguments for the `coast update` command.
 #[derive(Debug, Args)]
@@ -26,6 +31,52 @@ pub async fn execute(args: &UpdateArgs) -> Result<()> {
         UpdateAction::Check => execute_check().await,
         UpdateAction::Apply => execute_apply().await,
     }
+}
+
+pub(crate) async fn prepare_daemon_for_update() -> Result<()> {
+    if !super::daemon::is_daemon_running()? {
+        return Ok(());
+    }
+
+    let safety_response =
+        super::send_request(Request::IsSafeToUpdate(UpdateSafetyRequest::default())).await?;
+    let safety = match safety_response {
+        Response::UpdateSafety(report) => report,
+        Response::Error(error) => bail!("{}", error.error),
+        _ => bail!("unexpected response while checking update safety"),
+    };
+
+    if !safety.blockers.is_empty() {
+        print_safety_report("Update blocked", &safety);
+        bail!("The daemon is not in a safe state to update yet.");
+    }
+
+    if !safety.warnings.is_empty() {
+        print_safety_report("Update warnings", &safety);
+    }
+
+    let prepare_response =
+        super::send_request(Request::PrepareForUpdate(PrepareForUpdateRequest::default())).await?;
+    let prepare = match prepare_response {
+        Response::PrepareForUpdate(response) => response,
+        Response::Error(error) => bail!("{}", error.error),
+        _ => bail!("unexpected response while preparing for update"),
+    };
+
+    for action in &prepare.actions {
+        println!("  {} {}", "prepare:".bold(), action);
+    }
+
+    if !prepare.ready {
+        print_safety_report("Update preparation incomplete", &prepare.report);
+        bail!("The daemon could not be prepared for update.");
+    }
+
+    if !prepare.report.warnings.is_empty() {
+        print_safety_report("Update warnings", &prepare.report);
+    }
+
+    Ok(())
 }
 
 async fn execute_check() -> Result<()> {
@@ -93,8 +144,19 @@ async fn execute_apply() -> Result<()> {
     let tarball =
         coast_update::updater::download_release(&latest, coast_update::DOWNLOAD_TIMEOUT).await?;
 
+    println!("Preparing daemon for update...");
+    prepare_daemon_for_update().await?;
+
     println!("Applying update...");
-    coast_update::updater::apply_update(&tarball)?;
+    if let Err(error) = coast_update::updater::apply_update(&tarball) {
+        if let Err(restart_error) = super::daemon::restart_daemon_if_running().await {
+            eprintln!(
+                "{} Failed to recover daemon after update error: {restart_error}",
+                "warning:".yellow()
+            );
+        }
+        return Err(error.into());
+    }
 
     println!(
         "{}",
@@ -107,6 +169,42 @@ async fn execute_apply() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn print_safety_report(title: &str, report: &UpdateSafetyResponse) {
+    println!("\n{}", title.yellow().bold());
+    for issue in &report.blockers {
+        println!("  {} {}", "blocker:".red().bold(), format_issue(issue));
+    }
+    for issue in &report.warnings {
+        println!("  {} {}", "warning:".yellow().bold(), format_issue(issue));
+    }
+}
+
+fn format_issue(issue: &UpdateSafetyIssue) -> String {
+    let mut context = String::new();
+    if let Some(project) = &issue.project {
+        context.push_str(project);
+    }
+    if let Some(instance) = &issue.instance {
+        if !context.is_empty() {
+            context.push('/');
+        }
+        context.push_str(instance);
+    }
+    if let Some(operation) = &issue.operation {
+        if !context.is_empty() {
+            context.push(' ');
+        }
+        context.push('(');
+        context.push_str(operation);
+        context.push(')');
+    }
+    if context.is_empty() {
+        issue.summary.clone()
+    } else {
+        format!("{} [{}]", issue.summary, context)
+    }
 }
 
 #[cfg(test)]
