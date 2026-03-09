@@ -81,6 +81,7 @@ Requires a macOS Keychain entry for "Claude Code" and `coast-extractor-keychain`
 | `test_lookup.sh` | coast-lookup | `coast lookup` worktree discovery: compact, JSON, default output, subdirectory resolution. |
 | `test_multi_project.sh` | coast-demo + coast-api | Two projects simultaneously, cross-project messaging, `coast ls` with multiple roots. |
 | `test_observability.sh` | coast-demo | `coast ps`, `coast logs`, `coast logs <service>`, `coast shared ls`. |
+| `test_update.sh` | none (temp home) | Update coordination smoke test: `is-safe-to-update`, `prepare-for-update`, stale managed-container cleanup, quiescing, and daemon restart recovery. |
 
 The `benchmark.sh` script is not prefixed with `test_` and is not auto-discovered. Run it manually:
 

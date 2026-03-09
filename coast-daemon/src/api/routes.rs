@@ -18,7 +18,7 @@ use rust_i18n::t;
 
 use crate::handlers;
 use crate::handlers::compose_context;
-use crate::server::AppState;
+use crate::server::{AppState, UpdateOperationGuard, UpdateOperationKind};
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -50,7 +50,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/unarchive", post(unarchive_project))
 }
 
-pub(crate) fn to_api_response(resp: Response) -> impl IntoResponse {
+pub(crate) fn to_api_response(resp: Response) -> axum::response::Response {
     match resp {
         Response::Error(e) => {
             let status = if e.error.contains("not found") || e.error.contains("NotFound") {
@@ -71,7 +71,7 @@ pub(crate) fn to_api_response(resp: Response) -> impl IntoResponse {
 
 /// Like [`to_api_response`] but translates error messages using the provided locale.
 #[allow(dead_code)]
-pub(crate) fn to_api_response_i18n(resp: Response, lang: &str) -> impl IntoResponse {
+pub(crate) fn to_api_response_i18n(resp: Response, lang: &str) -> axum::response::Response {
     match resp {
         Response::Error(ref e) => {
             let status = if e.error.contains("not found") || e.error.contains("NotFound") {
@@ -93,10 +93,40 @@ pub(crate) fn to_api_response_i18n(resp: Response, lang: &str) -> impl IntoRespo
     }
 }
 
+fn update_operation_error_response(
+    error: &coast_core::error::CoastError,
+) -> axum::response::Response {
+    (
+        StatusCode::CONFLICT,
+        Json(json!({ "error": error.to_string() })),
+    )
+        .into_response()
+}
+
+fn begin_api_update_operation(
+    state: &AppState,
+    kind: UpdateOperationKind,
+    project: Option<&str>,
+    instance: Option<&str>,
+) -> Result<UpdateOperationGuard, Box<axum::response::Response>> {
+    state
+        .begin_update_operation(kind, project, instance)
+        .map_err(|error| Box::new(update_operation_error_response(&error)))
+}
+
 async fn stop(
     State(state): State<Arc<AppState>>,
     Json(req): Json<StopRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::Stop,
+        Some(&req.project),
+        Some(&req.name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     to_api_response(handlers::handle_stop(req, &state).await)
 }
 
@@ -104,10 +134,28 @@ async fn start(
     State(state): State<Arc<AppState>>,
     Json(req): Json<StartRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::Start,
+        Some(&req.project),
+        Some(&req.name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     to_api_response(handlers::handle_start(req, &state).await)
 }
 
 async fn rm(State(state): State<Arc<AppState>>, Json(req): Json<RmRequest>) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::Rm,
+        Some(&req.project),
+        Some(&req.name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     let sem = state.project_semaphore(&req.project).await;
     let _permit = sem.acquire().await;
     to_api_response(handlers::handle_rm(req, &state).await)
@@ -117,6 +165,15 @@ async fn rm_build(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RmBuildRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::RmBuild,
+        Some(&req.project),
+        None,
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     let sem = state.project_semaphore(&req.project).await;
     let _permit = sem.acquire().await;
     to_api_response(handlers::handle_rm_build(req, &state).await)
@@ -126,6 +183,15 @@ async fn archive_project(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ArchiveProjectRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::ArchiveProject,
+        Some(&req.project),
+        None,
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     to_api_response(handlers::handle_archive_project(req, &state).await)
 }
 
@@ -133,6 +199,15 @@ async fn unarchive_project(
     State(state): State<Arc<AppState>>,
     Json(req): Json<UnarchiveProjectRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::UnarchiveProject,
+        Some(&req.project),
+        None,
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     to_api_response(handlers::handle_unarchive_project(req, &state).await)
 }
 
@@ -140,6 +215,15 @@ async fn checkout(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CheckoutRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::Checkout,
+        Some(&req.project),
+        req.name.as_deref(),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     to_api_response(handlers::handle_checkout(req, &state).await)
 }
 
@@ -172,6 +256,21 @@ async fn secret(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SecretRequest>,
 ) -> impl IntoResponse {
+    if let SecretRequest::Set {
+        instance, project, ..
+    } = &req
+    {
+        let _operation_guard = match begin_api_update_operation(
+            &state,
+            UpdateOperationKind::SecretSet,
+            Some(project),
+            Some(instance),
+        ) {
+            Ok(guard) => guard,
+            Err(response) => return *response,
+        };
+        return to_api_response(handlers::handle_secret(req, &state).await);
+    }
     to_api_response(handlers::handle_secret(req, &state).await)
 }
 
@@ -179,6 +278,27 @@ async fn shared(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SharedRequest>,
 ) -> impl IntoResponse {
+    let kind = match &req {
+        SharedRequest::Ps { .. } => None,
+        SharedRequest::Stop { .. } => Some(UpdateOperationKind::SharedStop),
+        SharedRequest::Start { .. } => Some(UpdateOperationKind::SharedStart),
+        SharedRequest::Restart { .. } => Some(UpdateOperationKind::SharedRestart),
+        SharedRequest::Rm { .. } => Some(UpdateOperationKind::SharedRm),
+    };
+    if let Some(kind) = kind {
+        let project = match &req {
+            SharedRequest::Ps { project }
+            | SharedRequest::Stop { project, .. }
+            | SharedRequest::Start { project, .. }
+            | SharedRequest::Restart { project, .. }
+            | SharedRequest::Rm { project, .. } => project,
+        };
+        let _operation_guard = match begin_api_update_operation(&state, kind, Some(project), None) {
+            Ok(guard) => guard,
+            Err(response) => return *response,
+        };
+        return to_api_response(handlers::handle_shared(req, &state).await);
+    }
     to_api_response(handlers::handle_shared(req, &state).await)
 }
 
@@ -186,6 +306,15 @@ async fn rebuild(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RebuildRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::Rebuild,
+        Some(&req.project),
+        Some(&req.name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     let sem = state.project_semaphore(&req.project).await;
     let _permit = sem.acquire().await;
     to_api_response(handlers::handle_rebuild(req, &state).await)
@@ -195,6 +324,15 @@ async fn restart_services(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RestartServicesRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::RestartServices,
+        Some(&req.project),
+        Some(&req.name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     let sem = state.project_semaphore(&req.project).await;
     let _permit = sem.acquire().await;
     to_api_response(handlers::handle_restart_services(req, &state).await)
@@ -213,6 +351,15 @@ async fn clear_logs(
     use coast_core::types::InstanceStatus;
     use coast_docker::runtime::Runtime;
 
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::ClearLogs,
+        Some(&req.project),
+        Some(&req.name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     let lang = state.language();
     let db = state.db.lock().await;
     let instance = match db.get_instance(&req.project, &req.name) {
@@ -339,6 +486,16 @@ async fn upload_to_container(
             .into_response();
     };
 
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::UploadToContainer,
+        Some(&project),
+        Some(&name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
+
     let db = state.db.lock().await;
     let instance = match db.get_instance(&project, &name) {
         Ok(Some(i)) => i,
@@ -453,7 +610,10 @@ async fn upload_to_container(
     }
 }
 
-async fn upload_to_host(mut multipart: Multipart) -> impl IntoResponse {
+async fn upload_to_host(
+    State(state): State<Arc<AppState>>,
+    mut multipart: Multipart,
+) -> impl IntoResponse {
     let mut file_name: Option<String> = None;
     let mut file_data: Option<Vec<u8>> = None;
 
@@ -479,6 +639,12 @@ async fn upload_to_host(mut multipart: Multipart) -> impl IntoResponse {
         )
             .into_response();
     };
+
+    let _operation_guard =
+        match begin_api_update_operation(&state, UpdateOperationKind::UploadToHost, None, None) {
+            Ok(guard) => guard,
+            Err(response) => return *response,
+        };
 
     let dest = format!("/tmp/{fname}");
     match std::fs::write(&dest, &data) {
@@ -633,6 +799,15 @@ async fn service_stop(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ServiceControlRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::ServiceStop,
+        Some(&req.project),
+        Some(&req.name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     let container_id = match resolve_container_id(&state, &req.project, &req.name).await {
         Ok(id) => id,
         Err(e) => return e.into_response(),
@@ -680,6 +855,15 @@ async fn service_start(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ServiceControlRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::ServiceStart,
+        Some(&req.project),
+        Some(&req.name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     let container_id = match resolve_container_id(&state, &req.project, &req.name).await {
         Ok(id) => id,
         Err(e) => return e.into_response(),
@@ -727,6 +911,15 @@ async fn service_restart(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ServiceControlRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::ServiceRestart,
+        Some(&req.project),
+        Some(&req.name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     let container_id = match resolve_container_id(&state, &req.project, &req.name).await {
         Ok(id) => id,
         Err(e) => return e.into_response(),
@@ -774,6 +967,15 @@ async fn service_rm(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ServiceControlRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::ServiceRm,
+        Some(&req.project),
+        Some(&req.name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     let container_id = match resolve_container_id(&state, &req.project, &req.name).await {
         Ok(id) => id,
         Err(e) => return e.into_response(),
@@ -886,6 +1088,15 @@ async fn bare_service_stop(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ServiceControlRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::BareServiceStop,
+        Some(&req.project),
+        Some(&req.name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     let container_id = match resolve_container_id(&state, &req.project, &req.name).await {
         Ok(id) => id,
         Err(e) => return e.into_response(),
@@ -926,6 +1137,15 @@ async fn bare_service_start(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ServiceControlRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::BareServiceStart,
+        Some(&req.project),
+        Some(&req.name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     let container_id = match resolve_container_id(&state, &req.project, &req.name).await {
         Ok(id) => id,
         Err(e) => return e.into_response(),
@@ -969,6 +1189,15 @@ async fn bare_service_restart(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ServiceControlRequest>,
 ) -> impl IntoResponse {
+    let _operation_guard = match begin_api_update_operation(
+        &state,
+        UpdateOperationKind::BareServiceRestart,
+        Some(&req.project),
+        Some(&req.name),
+    ) {
+        Ok(guard) => guard,
+        Err(response) => return *response,
+    };
     let container_id = match resolve_container_id(&state, &req.project, &req.name).await {
         Ok(id) => id,
         Err(e) => return e.into_response(),

@@ -415,6 +415,7 @@ pub mod shared;
 pub mod start;
 pub mod stop;
 pub mod unassign;
+pub mod update_safety;
 
 /// Convert a handler result into a Response, wrapping errors in ErrorResponse.
 /// Uses the English error message (for logs and when no language context is available).
@@ -969,6 +970,22 @@ pub async fn handle_set_analytics(req: SetAnalyticsRequest, state: &AppState) ->
 pub async fn handle_set_language(req: SetLanguageRequest, state: &AppState) -> Response {
     match set_language::handle(req, state).await {
         Ok(resp) => Response::SetLanguage(resp),
+        Err(e) => error_response(&e),
+    }
+}
+
+/// Handle an update-safety request.
+pub async fn handle_is_safe_to_update(req: UpdateSafetyRequest, state: &AppState) -> Response {
+    match update_safety::handle_is_safe_to_update(req, state).await {
+        Ok(resp) => Response::UpdateSafety(resp),
+        Err(e) => error_response(&e),
+    }
+}
+
+/// Handle a prepare-for-update request.
+pub async fn handle_prepare_for_update(req: PrepareForUpdateRequest, state: &AppState) -> Response {
+    match update_safety::handle_prepare_for_update(req, state).await {
+        Ok(resp) => Response::PrepareForUpdate(resp),
         Err(e) => error_response(&e),
     }
 }
