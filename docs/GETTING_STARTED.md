@@ -1,6 +1,9 @@
 # Getting Started with Coasts
 
-If you haven't already, complete the install and requirements below first. Then this guide walks through using Coast in a project.
+```youtube
+Je921fgJ4RY
+Part of the [Coasts Video Course](learn-coasts/README.md).
+```
 
 ## Installing
 

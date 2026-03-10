@@ -23,7 +23,15 @@ const DOC_TITLE_KEYS: Record<string, string> = {
   'README.md': 'docs.nav.overview',
   'GETTING_STARTED.md': 'docs.nav.gettingStarted',
   'SKILLS_FOR_HOST_AGENTS.md': 'docs.nav.skillsForHostAgents',
-  'VIDEO_TUTORIALS.md': 'docs.nav.videoTutorials',
+  'learn-coasts/README.md': 'docs.nav.learnCoasts',
+  'learn-coasts/coasts.md': 'docs.nav.learnCoastsCoasts',
+  'learn-coasts/ports.md': 'docs.nav.learnCoastsPorts',
+  'learn-coasts/assign.md': 'docs.nav.learnCoastsAssign',
+  'learn-coasts/checkout.md': 'docs.nav.learnCoastsCheckout',
+  'learn-coasts/volumes.md': 'docs.nav.learnCoastsVolumes',
+  'learn-coasts/secrets.md': 'docs.nav.learnCoastsSecrets',
+  'learn-coasts/getting-started.md': 'docs.nav.learnCoastsGettingStarted',
+  'learn-coasts/coast-ui.md': 'docs.nav.learnCoastsCoastUi',
   'concepts_and_terminology/README.md': 'docs.nav.conceptsAndTerminology',
   'concepts_and_terminology/COASTS.md': 'docs.nav.coasts',
   'concepts_and_terminology/PORTS.md': 'docs.nav.ports',
@@ -79,10 +87,11 @@ function isActive(node: TreeNode, activePath: string): boolean {
 }
 
 function formatName(name: string): string {
-  return name
+  const base = name
     .replace(/\.md$/, '')
     .replace(/^README$/, 'Overview')
-    .replace(/_/g, ' ');
+    .replace(/[_-]/g, ' ');
+  return base.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function titleLookupPath(node: TreeNode): string {

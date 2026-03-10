@@ -374,6 +374,59 @@ export default function DocsViewer({ content, basePath, files }: DocsViewerProps
         ? 'mb-4 p-4 rounded-lg overflow-x-auto font-mono text-sm leading-relaxed bg-[var(--docs-code-surface)] border-2 border-[var(--primary)] ring-1 ring-[var(--primary)]/20'
         : 'mb-4 p-4 rounded-lg overflow-x-auto font-mono text-sm leading-relaxed bg-[var(--docs-code-surface)] border border-[var(--border)]';
 
+      if (childClass.includes('youtube')) {
+        const raw = (typeof childProps?.['children'] === 'string'
+          ? childProps['children']
+          : extractText(children)
+        ).trim();
+        const lines = raw.split('\n').filter(Boolean);
+        const videoId = lines[0];
+        const caption = lines.slice(1).join(' ').trim() || null;
+        return (
+          <div className="mb-4 mx-auto" style={{ maxWidth: 560 }}>
+            <div className="rounded-lg overflow-hidden border border-[var(--border)]" style={{ aspectRatio: '16/9' }}>
+              <iframe
+                width="100%"
+                height="100%"
+                src={`https://www.youtube.com/embed/${videoId}`}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                style={{ border: 0 }}
+              />
+            </div>
+            {caption != null && (
+              <p className="mt-2 text-center text-sm text-muted-ui italic">
+                {caption.split(/(\[[^\]]+\]\([^)]+\))/).map((part, i) => {
+                  const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+                  if (linkMatch?.[1] != null && linkMatch[2] != null) {
+                    const href = linkMatch[2];
+                    const docLink = resolveDocLink(href, basePath);
+                    if (docLink != null) {
+                      return (
+                        <a
+                          key={i}
+                          href={`#${docLink}`}
+                          onClick={(e) => { e.preventDefault(); void navigate(docLink); }}
+                          className="text-[var(--primary)] hover:text-[var(--primary-strong)] underline underline-offset-2"
+                        >
+                          {linkMatch[1]}
+                        </a>
+                      );
+                    }
+                    return (
+                      <a key={i} href={href} target="_blank" rel="noopener noreferrer" className="text-[var(--primary)] hover:text-[var(--primary-strong)] underline underline-offset-2">
+                        {linkMatch[1]}
+                      </a>
+                    );
+                  }
+                  return part;
+                })}
+              </p>
+            )}
+          </div>
+        );
+      }
+
       if (childClass.includes('prompt-copy')) {
         const filename = (typeof childProps?.['children'] === 'string'
           ? childProps['children']
