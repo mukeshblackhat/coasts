@@ -16,7 +16,7 @@ If you prefer a quick video walkthrough before reading the rest of the docs, sta
 - [Ports](https://www.youtube.com/watch?v=pBKkBiJ3o-g&list=PLplJaH2mu9vQFqnyJHrrls6JU0yt9CUuw&index=3&pp=iAQB) (1:46) - How Coasts handle port isolation and parallel runtime access.
 - [Assign](https://www.youtube.com/watch?v=LYCeequ54nk&list=PLplJaH2mu9vQFqnyJHrrls6JU0yt9CUuw&index=4&pp=iAQB) (1:57) - How to switch a running Coast between worktrees.
 - [Checkout](https://www.youtube.com/watch?v=JRAXkM4U1UE&list=PLplJaH2mu9vQFqnyJHrrls6JU0yt9CUuw&index=5&pp=iAQB) (1:46) - How to bring one Coast onto your canonical ports for active use.
-- [Volumes](https://www.youtube.com/watch?v=k1es1Wf0zp0&list=PLplJaH2mu9vQFqnyJHrrls6JU0yt9CUuw&index=6&pp=iAQB) (2:00) - How Coasts deal with volumes and persistent service state.
+- [Volumes](https://www.youtube.com/watch?v=iR40qH1WSYI&list=PLplJaH2mu9vQFqnyJHrrls6JU0yt9CUuw&index=6&pp=iAQB) (2:00) - How Coasts deal with volumes and persistent service state.
 - [Secrets](https://www.youtube.com/watch?v=4lAfHUjqn50&list=PLplJaH2mu9vQFqnyJHrrls6JU0yt9CUuw&index=7&pp=iAQB) (2:09) - Managing secrets inside a Coast.
 - [Getting Started](https://www.youtube.com/watch?v=Je921fgJ4RY&list=PLplJaH2mu9vQFqnyJHrrls6JU0yt9CUuw&index=8&pp=iAQB) (2:40) - A quick onboarding walkthrough for trying Coasts.
 - [Coast UI](https://www.youtube.com/watch?v=Ts-YWkhHR8I&list=PLplJaH2mu9vQFqnyJHrrls6JU0yt9CUuw&index=9&pp=iAQB0gcJCa4KAYcqIYzv) (1:46) - A tour of the Coastguard UI and the runtime information it exposes.
