@@ -167,12 +167,11 @@ pub fn clear_checked_out_state(
 
     let port_allocs = db.get_port_allocations(project, name)?;
     if crate::port_manager::running_in_wsl() {
-        if let Err(err) = crate::port_manager::remove_checkout_bridge(project, name) {
-            warn!(
-                error = %err,
-                "failed to remove WSL checkout bridge during uncheckout"
-            );
-        }
+        crate::port_manager::remove_checkout_bridge(project, name).map_err(|err| {
+            coast_core::error::CoastError::port(format!(
+                "failed to remove WSL checkout bridge for '{project}/{name}': {err}"
+            ))
+        })?;
     }
     for alloc in &port_allocs {
         if let Some(pid) = alloc.socat_pid {
@@ -195,6 +194,12 @@ pub fn clear_checked_out_state(
 #[cfg(test)]
 mod compose_context_tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn test_compose_shell_with_subdir() {
@@ -393,6 +398,78 @@ compose = "./infra/docker-compose.yml"
         assert_eq!(updated.status, InstanceStatus::Running);
         let allocs = db.get_port_allocations("proj", "dev-1").unwrap();
         assert!(allocs[0].socat_pid.is_none());
+    }
+
+    #[test]
+    fn test_clear_checked_out_state_keeps_checked_out_when_wsl_bridge_removal_fails() {
+        let _guard = env_lock().lock().unwrap();
+        let db = crate::state::StateDb::open_in_memory().unwrap();
+        let instance = coast_core::types::CoastInstance {
+            name: "dev-1".to_string(),
+            project: "proj".to_string(),
+            status: InstanceStatus::CheckedOut,
+            branch: Some("main".to_string()),
+            commit_sha: None,
+            container_id: Some("cid-123".to_string()),
+            runtime: coast_core::types::RuntimeType::Dind,
+            created_at: chrono::Utc::now(),
+            worktree_name: None,
+            build_id: None,
+            coastfile_type: None,
+        };
+        db.insert_instance(&instance).unwrap();
+        db.insert_port_allocation(
+            "proj",
+            "dev-1",
+            &coast_core::types::PortMapping {
+                logical_name: "web".to_string(),
+                canonical_port: 3000,
+                dynamic_port: 50000,
+                is_primary: false,
+            },
+        )
+        .unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let fake_docker = dir.path().join("docker");
+        std::fs::write(&fake_docker, "#!/bin/sh\necho bridge-remove-failed >&2\nexit 1\n")
+            .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&fake_docker).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&fake_docker, perms).unwrap();
+        }
+
+        let old_path = std::env::var("PATH").unwrap_or_default();
+        let old_distro = std::env::var_os("WSL_DISTRO_NAME");
+        let old_interop = std::env::var_os("WSL_INTEROP");
+        unsafe {
+            std::env::set_var("PATH", format!("{}:{}", dir.path().display(), old_path));
+            std::env::set_var("WSL_DISTRO_NAME", "Ubuntu");
+            std::env::remove_var("WSL_INTEROP");
+        }
+
+        let err =
+            clear_checked_out_state(&db, "proj", "dev-1", &InstanceStatus::Running).unwrap_err();
+
+        unsafe {
+            std::env::set_var("PATH", old_path);
+            match old_distro {
+                Some(value) => std::env::set_var("WSL_DISTRO_NAME", value),
+                None => std::env::remove_var("WSL_DISTRO_NAME"),
+            }
+            match old_interop {
+                Some(value) => std::env::set_var("WSL_INTEROP", value),
+                None => std::env::remove_var("WSL_INTEROP"),
+            }
+        }
+
+        assert!(err.to_string().contains("failed to remove WSL checkout bridge"));
+
+        let updated = db.get_instance("proj", "dev-1").unwrap().unwrap();
+        assert_eq!(updated.status, InstanceStatus::CheckedOut);
     }
 }
 

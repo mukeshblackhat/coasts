@@ -85,12 +85,12 @@ pub async fn handle(req: RmRequest, state: &AppState) -> Result<RmResponse> {
     if instance.status == InstanceStatus::Running || instance.status == InstanceStatus::CheckedOut {
         let db = state.db.lock().await;
         if instance.status == InstanceStatus::CheckedOut {
-            let _ = super::clear_checked_out_state(
+            super::clear_checked_out_state(
                 &db,
                 &req.project,
                 &req.name,
                 &InstanceStatus::Stopping,
-            );
+            )?;
         } else {
             let _ = db.update_instance_status(&req.project, &req.name, &InstanceStatus::Stopping);
         }

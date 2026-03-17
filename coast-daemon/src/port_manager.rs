@@ -9,6 +9,7 @@
 /// and always-on dynamic ports. The daemon spawns socat processes that forward
 /// traffic from host ports to coast container ports.
 use std::collections::HashMap;
+use std::hash::Hasher;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::os::unix::process::CommandExt;
 use std::process::Command;
@@ -351,6 +352,32 @@ fn sanitize_docker_name_component(component: &str) -> String {
     }
 }
 
+fn checkout_bridge_name_hash(project: &str, instance: &str) -> u64 {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+
+    struct Fnv64(u64);
+
+    impl Hasher for Fnv64 {
+        fn finish(&self) -> u64 {
+            self.0
+        }
+
+        fn write(&mut self, bytes: &[u8]) {
+            for byte in bytes {
+                self.0 ^= u64::from(*byte);
+                self.0 = self.0.wrapping_mul(FNV_PRIME);
+            }
+        }
+    }
+
+    let mut hasher = Fnv64(FNV_OFFSET_BASIS);
+    hasher.write(project.as_bytes());
+    hasher.write(&[0]);
+    hasher.write(instance.as_bytes());
+    hasher.finish()
+}
+
 pub struct CheckoutBridgePort<'a> {
     pub _logical_name: &'a str,
     pub canonical_port: u16,
@@ -358,11 +385,22 @@ pub struct CheckoutBridgePort<'a> {
 }
 
 pub fn checkout_bridge_container_name(project: &str, instance: &str) -> String {
-    format!(
-        "coast-checkout-{}-{}",
-        sanitize_docker_name_component(project),
-        sanitize_docker_name_component(instance),
-    )
+    const PREFIX: &str = "coast-checkout-";
+
+    let hash = format!("{:016x}", checkout_bridge_name_hash(project, instance));
+    let project = sanitize_docker_name_component(project);
+    let instance = sanitize_docker_name_component(instance);
+    let mut base = format!("{project}-{instance}");
+    let max_base_len = 255usize.saturating_sub(PREFIX.len() + 1 + hash.len());
+    if base.len() > max_base_len {
+        base.truncate(max_base_len);
+        base = base.trim_matches('-').to_string();
+    }
+    if base.is_empty() {
+        base = "default".to_string();
+    }
+
+    format!("{PREFIX}{base}-{hash}")
 }
 
 fn run_docker_command(args: &[String]) -> Result<std::process::Output> {
@@ -860,7 +898,15 @@ mod tests {
     #[test]
     fn test_checkout_bridge_container_name_sanitizes_components() {
         let name = checkout_bridge_container_name("My.App", "feat/branch");
-        assert_eq!(name, "coast-checkout-my-app-feat-branch");
+        assert!(name.starts_with("coast-checkout-my-app-feat-branch-"));
+    }
+
+    #[test]
+    fn test_checkout_bridge_container_name_disambiguates_colliding_sanitized_names() {
+        let dotted = checkout_bridge_container_name("My.App", "feat/branch");
+        let dashed = checkout_bridge_container_name("my-app", "feat-branch");
+
+        assert_ne!(dotted, dashed);
     }
 
     #[test]
