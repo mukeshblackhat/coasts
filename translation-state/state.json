@@ -11,9 +11,9 @@
       "translated_at": "2026-03-10T20:35:46Z"
     },
     "SKILLS_FOR_HOST_AGENTS.md": {
-      "commit": "8de7870",
-      "source_sha256": "41edafb6689beb58a73c919a295a2d8ebae6b12511e361afe93de3110464be94",
-      "translated_at": "2026-03-06T22:13:59Z"
+      "commit": "fa404df",
+      "source_sha256": "59c37f63db7860847bcc47398e560065999fb9f5672e05185286f5e39cf911b5",
+      "translated_at": "2026-03-19T07:30:03Z"
     },
     "VIDEO_TUTORIALS.md": {
       "commit": "85b1396",
@@ -106,9 +106,9 @@
       "translated_at": "2026-02-28T13:10:06Z"
     },
     "concepts_and_terminology/CHECKOUT.md": {
-      "commit": "3357381",
-      "source_sha256": "fc57170a95a7188f8f7692782f7671626e1f5440ea4944d027398b8f661076cb",
-      "translated_at": "2026-02-28T13:10:06Z"
+      "commit": "fa404df",
+      "source_sha256": "dbe2365211536c016980e92782c4dc7e5816d39fbdddfcc4b4497358f475afc4",
+      "translated_at": "2026-03-19T07:30:03Z"
     },
     "concepts_and_terminology/CLI.md": {
       "commit": "3357381",
@@ -171,9 +171,9 @@
       "translated_at": "2026-03-09T09:08:24Z"
     },
     "concepts_and_terminology/PORTS.md": {
-      "commit": "3357381",
-      "source_sha256": "7fc365f5c1374f68e038d0ad8d192bc43a243aa8182835ef6531bfe81c6dc7d3",
-      "translated_at": "2026-02-28T13:10:06Z"
+      "commit": "fa404df",
+      "source_sha256": "ce2aa6a1722daec3e76d2e138b9b18ce1e5011f03ffc137eded93ebf72e09491",
+      "translated_at": "2026-03-19T07:30:03Z"
     },
     "concepts_and_terminology/PRIMARY_PORT_AND_DNS.md": {
       "commit": "3357381",
@@ -296,9 +296,9 @@
       "translated_at": "2026-03-05T00:12:10Z"
     },
     "skills_prompt.txt": {
-      "commit": "0f69cdc",
-      "source_sha256": "eaf4cde25d9e32aa5084fd1bba7b021babcb4fc83cb1f27a01571a44baf35cde",
-      "translated_at": "2026-03-02T07:44:45Z"
+      "commit": "fa404df",
+      "source_sha256": "4abc0b44a9d95763e5a728b010794aaa50f1a11e5877547421c87268b106c36a",
+      "translated_at": "2026-03-19T07:30:03Z"
     }
   },
   "ja": {
@@ -313,9 +313,9 @@
       "translated_at": "2026-03-10T20:30:45Z"
     },
     "SKILLS_FOR_HOST_AGENTS.md": {
-      "commit": "8de7870",
-      "source_sha256": "41edafb6689beb58a73c919a295a2d8ebae6b12511e361afe93de3110464be94",
-      "translated_at": "2026-03-06T22:11:47Z"
+      "commit": "fa404df",
+      "source_sha256": "59c37f63db7860847bcc47398e560065999fb9f5672e05185286f5e39cf911b5",
+      "translated_at": "2026-03-19T07:26:45Z"
     },
     "VIDEO_TUTORIALS.md": {
       "commit": "85b1396",
@@ -408,9 +408,9 @@
       "translated_at": "2026-02-28T12:45:25Z"
     },
     "concepts_and_terminology/CHECKOUT.md": {
-      "commit": "3357381",
-      "source_sha256": "fc57170a95a7188f8f7692782f7671626e1f5440ea4944d027398b8f661076cb",
-      "translated_at": "2026-02-28T12:45:25Z"
+      "commit": "fa404df",
+      "source_sha256": "dbe2365211536c016980e92782c4dc7e5816d39fbdddfcc4b4497358f475afc4",
+      "translated_at": "2026-03-19T07:26:45Z"
     },
     "concepts_and_terminology/CLI.md": {
       "commit": "3357381",
@@ -473,9 +473,9 @@
       "translated_at": "2026-03-09T08:59:59Z"
     },
     "concepts_and_terminology/PORTS.md": {
-      "commit": "3357381",
-      "source_sha256": "7fc365f5c1374f68e038d0ad8d192bc43a243aa8182835ef6531bfe81c6dc7d3",
-      "translated_at": "2026-02-28T12:45:25Z"
+      "commit": "fa404df",
+      "source_sha256": "ce2aa6a1722daec3e76d2e138b9b18ce1e5011f03ffc137eded93ebf72e09491",
+      "translated_at": "2026-03-19T07:26:45Z"
     },
     "concepts_and_terminology/PRIMARY_PORT_AND_DNS.md": {
       "commit": "3357381",
@@ -598,9 +598,9 @@
       "translated_at": "2026-03-05T00:03:15Z"
     },
     "skills_prompt.txt": {
-      "commit": "0f69cdc",
-      "source_sha256": "eaf4cde25d9e32aa5084fd1bba7b021babcb4fc83cb1f27a01571a44baf35cde",
-      "translated_at": "2026-03-02T07:39:42Z"
+      "commit": "fa404df",
+      "source_sha256": "4abc0b44a9d95763e5a728b010794aaa50f1a11e5877547421c87268b106c36a",
+      "translated_at": "2026-03-19T07:26:45Z"
     }
   },
   "ko": {
@@ -615,9 +615,9 @@
       "translated_at": "2026-03-10T20:32:07Z"
     },
     "SKILLS_FOR_HOST_AGENTS.md": {
-      "commit": "8de7870",
-      "source_sha256": "41edafb6689beb58a73c919a295a2d8ebae6b12511e361afe93de3110464be94",
-      "translated_at": "2026-03-06T22:12:24Z"
+      "commit": "fa404df",
+      "source_sha256": "59c37f63db7860847bcc47398e560065999fb9f5672e05185286f5e39cf911b5",
+      "translated_at": "2026-03-19T07:27:41Z"
     },
     "VIDEO_TUTORIALS.md": {
       "commit": "85b1396",
@@ -710,9 +710,9 @@
       "translated_at": "2026-02-28T12:52:18Z"
     },
     "concepts_and_terminology/CHECKOUT.md": {
-      "commit": "3357381",
-      "source_sha256": "fc57170a95a7188f8f7692782f7671626e1f5440ea4944d027398b8f661076cb",
-      "translated_at": "2026-02-28T12:52:18Z"
+      "commit": "fa404df",
+      "source_sha256": "dbe2365211536c016980e92782c4dc7e5816d39fbdddfcc4b4497358f475afc4",
+      "translated_at": "2026-03-19T07:27:41Z"
     },
     "concepts_and_terminology/CLI.md": {
       "commit": "3357381",
@@ -775,9 +775,9 @@
       "translated_at": "2026-03-09T09:02:23Z"
     },
     "concepts_and_terminology/PORTS.md": {
-      "commit": "3357381",
-      "source_sha256": "7fc365f5c1374f68e038d0ad8d192bc43a243aa8182835ef6531bfe81c6dc7d3",
-      "translated_at": "2026-02-28T12:52:18Z"
+      "commit": "fa404df",
+      "source_sha256": "ce2aa6a1722daec3e76d2e138b9b18ce1e5011f03ffc137eded93ebf72e09491",
+      "translated_at": "2026-03-19T07:27:41Z"
     },
     "concepts_and_terminology/PRIMARY_PORT_AND_DNS.md": {
       "commit": "3357381",
@@ -900,9 +900,9 @@
       "translated_at": "2026-03-05T00:05:49Z"
     },
     "skills_prompt.txt": {
-      "commit": "0f69cdc",
-      "source_sha256": "eaf4cde25d9e32aa5084fd1bba7b021babcb4fc83cb1f27a01571a44baf35cde",
-      "translated_at": "2026-03-02T07:41:07Z"
+      "commit": "fa404df",
+      "source_sha256": "4abc0b44a9d95763e5a728b010794aaa50f1a11e5877547421c87268b106c36a",
+      "translated_at": "2026-03-19T07:27:41Z"
     }
   },
   "pt": {
@@ -917,9 +917,9 @@
       "translated_at": "2026-03-10T20:34:41Z"
     },
     "SKILLS_FOR_HOST_AGENTS.md": {
-      "commit": "8de7870",
-      "source_sha256": "41edafb6689beb58a73c919a295a2d8ebae6b12511e361afe93de3110464be94",
-      "translated_at": "2026-03-06T22:13:32Z"
+      "commit": "fa404df",
+      "source_sha256": "59c37f63db7860847bcc47398e560065999fb9f5672e05185286f5e39cf911b5",
+      "translated_at": "2026-03-19T07:29:17Z"
     },
     "VIDEO_TUTORIALS.md": {
       "commit": "85b1396",
@@ -1012,9 +1012,9 @@
       "translated_at": "2026-02-28T13:04:30Z"
     },
     "concepts_and_terminology/CHECKOUT.md": {
-      "commit": "3357381",
-      "source_sha256": "fc57170a95a7188f8f7692782f7671626e1f5440ea4944d027398b8f661076cb",
-      "translated_at": "2026-02-28T13:04:30Z"
+      "commit": "fa404df",
+      "source_sha256": "dbe2365211536c016980e92782c4dc7e5816d39fbdddfcc4b4497358f475afc4",
+      "translated_at": "2026-03-19T07:29:17Z"
     },
     "concepts_and_terminology/CLI.md": {
       "commit": "3357381",
@@ -1077,9 +1077,9 @@
       "translated_at": "2026-03-09T09:06:35Z"
     },
     "concepts_and_terminology/PORTS.md": {
-      "commit": "3357381",
-      "source_sha256": "7fc365f5c1374f68e038d0ad8d192bc43a243aa8182835ef6531bfe81c6dc7d3",
-      "translated_at": "2026-02-28T13:04:30Z"
+      "commit": "fa404df",
+      "source_sha256": "ce2aa6a1722daec3e76d2e138b9b18ce1e5011f03ffc137eded93ebf72e09491",
+      "translated_at": "2026-03-19T07:29:17Z"
     },
     "concepts_and_terminology/PRIMARY_PORT_AND_DNS.md": {
       "commit": "3357381",
@@ -1202,9 +1202,9 @@
       "translated_at": "2026-03-05T00:10:17Z"
     },
     "skills_prompt.txt": {
-      "commit": "0f69cdc",
-      "source_sha256": "eaf4cde25d9e32aa5084fd1bba7b021babcb4fc83cb1f27a01571a44baf35cde",
-      "translated_at": "2026-03-02T07:43:40Z"
+      "commit": "fa404df",
+      "source_sha256": "4abc0b44a9d95763e5a728b010794aaa50f1a11e5877547421c87268b106c36a",
+      "translated_at": "2026-03-19T07:29:17Z"
     }
   },
   "ru": {
@@ -1219,9 +1219,9 @@
       "translated_at": "2026-03-10T20:33:19Z"
     },
     "SKILLS_FOR_HOST_AGENTS.md": {
-      "commit": "8de7870",
-      "source_sha256": "41edafb6689beb58a73c919a295a2d8ebae6b12511e361afe93de3110464be94",
-      "translated_at": "2026-03-06T22:13:00Z"
+      "commit": "fa404df",
+      "source_sha256": "59c37f63db7860847bcc47398e560065999fb9f5672e05185286f5e39cf911b5",
+      "translated_at": "2026-03-19T07:28:31Z"
     },
     "VIDEO_TUTORIALS.md": {
       "commit": "85b1396",
@@ -1314,9 +1314,9 @@
       "translated_at": "2026-02-28T12:58:35Z"
     },
     "concepts_and_terminology/CHECKOUT.md": {
-      "commit": "3357381",
-      "source_sha256": "fc57170a95a7188f8f7692782f7671626e1f5440ea4944d027398b8f661076cb",
-      "translated_at": "2026-02-28T12:58:35Z"
+      "commit": "fa404df",
+      "source_sha256": "dbe2365211536c016980e92782c4dc7e5816d39fbdddfcc4b4497358f475afc4",
+      "translated_at": "2026-03-19T07:28:31Z"
     },
     "concepts_and_terminology/CLI.md": {
       "commit": "3357381",
@@ -1379,9 +1379,9 @@
       "translated_at": "2026-03-09T09:04:33Z"
     },
     "concepts_and_terminology/PORTS.md": {
-      "commit": "3357381",
-      "source_sha256": "7fc365f5c1374f68e038d0ad8d192bc43a243aa8182835ef6531bfe81c6dc7d3",
-      "translated_at": "2026-02-28T12:58:35Z"
+      "commit": "fa404df",
+      "source_sha256": "ce2aa6a1722daec3e76d2e138b9b18ce1e5011f03ffc137eded93ebf72e09491",
+      "translated_at": "2026-03-19T07:28:31Z"
     },
     "concepts_and_terminology/PRIMARY_PORT_AND_DNS.md": {
       "commit": "3357381",
@@ -1504,9 +1504,9 @@
       "translated_at": "2026-03-05T00:08:04Z"
     },
     "skills_prompt.txt": {
-      "commit": "0f69cdc",
-      "source_sha256": "eaf4cde25d9e32aa5084fd1bba7b021babcb4fc83cb1f27a01571a44baf35cde",
-      "translated_at": "2026-03-02T07:42:26Z"
+      "commit": "fa404df",
+      "source_sha256": "4abc0b44a9d95763e5a728b010794aaa50f1a11e5877547421c87268b106c36a",
+      "translated_at": "2026-03-19T07:28:31Z"
     }
   },
   "zh": {
@@ -1521,9 +1521,9 @@
       "translated_at": "2026-03-10T20:29:21Z"
     },
     "SKILLS_FOR_HOST_AGENTS.md": {
-      "commit": "8de7870",
-      "source_sha256": "41edafb6689beb58a73c919a295a2d8ebae6b12511e361afe93de3110464be94",
-      "translated_at": "2026-03-06T22:11:16Z"
+      "commit": "fa404df",
+      "source_sha256": "59c37f63db7860847bcc47398e560065999fb9f5672e05185286f5e39cf911b5",
+      "translated_at": "2026-03-19T07:25:56Z"
     },
     "VIDEO_TUTORIALS.md": {
       "commit": "85b1396",
@@ -1616,9 +1616,9 @@
       "translated_at": "2026-02-28T12:39:25Z"
     },
     "concepts_and_terminology/CHECKOUT.md": {
-      "commit": "3357381",
-      "source_sha256": "fc57170a95a7188f8f7692782f7671626e1f5440ea4944d027398b8f661076cb",
-      "translated_at": "2026-02-28T12:39:25Z"
+      "commit": "fa404df",
+      "source_sha256": "dbe2365211536c016980e92782c4dc7e5816d39fbdddfcc4b4497358f475afc4",
+      "translated_at": "2026-03-19T07:25:56Z"
     },
     "concepts_and_terminology/CLI.md": {
       "commit": "3357381",
@@ -1681,9 +1681,9 @@
       "translated_at": "2026-03-09T08:57:57Z"
     },
     "concepts_and_terminology/PORTS.md": {
-      "commit": "3357381",
-      "source_sha256": "7fc365f5c1374f68e038d0ad8d192bc43a243aa8182835ef6531bfe81c6dc7d3",
-      "translated_at": "2026-02-28T12:39:25Z"
+      "commit": "fa404df",
+      "source_sha256": "ce2aa6a1722daec3e76d2e138b9b18ce1e5011f03ffc137eded93ebf72e09491",
+      "translated_at": "2026-03-19T07:25:56Z"
     },
     "concepts_and_terminology/PRIMARY_PORT_AND_DNS.md": {
       "commit": "3357381",
@@ -1806,9 +1806,9 @@
       "translated_at": "2026-03-05T00:01:09Z"
     },
     "skills_prompt.txt": {
-      "commit": "0f69cdc",
-      "source_sha256": "eaf4cde25d9e32aa5084fd1bba7b021babcb4fc83cb1f27a01571a44baf35cde",
-      "translated_at": "2026-03-02T07:38:29Z"
+      "commit": "fa404df",
+      "source_sha256": "4abc0b44a9d95763e5a728b010794aaa50f1a11e5877547421c87268b106c36a",
+      "translated_at": "2026-03-19T07:25:56Z"
     }
   }
 }

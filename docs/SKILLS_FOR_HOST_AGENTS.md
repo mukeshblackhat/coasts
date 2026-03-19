@@ -73,14 +73,45 @@ If you encounter errors or unfamiliar behavior, search the Coast docs:
 This uses semantic search — describe the problem in natural language and it will
 find the relevant documentation.
 
+=== WORKTREE AWARENESS ===
+
+When you start working in a worktree — whether you created it or a tool like
+Codex, Conductor, or T3 Code created it for you — check if a Coast instance is
+already assigned:
+
+  coast lookup
+
+If `coast lookup` finds an instance, use it for all runtime commands.
+
+If it returns no instances, check what's currently running:
+
+  coast ls
+
+Then ask the user which option they prefer:
+
+Option 1 — Create a new Coast and assign this worktree:
+  coast run <new-name>
+  coast assign <new-name> -w <worktree>
+
+Option 2 — Reassign an existing Coast to this worktree:
+  coast assign <existing-name> -w <worktree>
+
+Option 3 — Skip Coast entirely:
+Continue without a runtime environment. You can edit files but cannot run tests,
+builds, or services inside a container.
+
+The <worktree> value is the branch name (run `git branch --show-current`) or
+the worktree identifier shown in `coast ls`. Always ask the user before creating
+or reassigning — do not do it automatically.
+
 === RULES ===
 
 - Always run `coast lookup` before your first runtime command in a session.
 - Do not run services directly on the host. Use `coast exec` for all runtime tasks.
 - File edits on the host are instantly visible inside the Coast. You do not need
   to copy files or rebuild after editing.
-- If `coast lookup` returns no instances, the Coast may not be running. Suggest
-  `coast run dev-1` or check `coast ls` for the project state.
+- If `coast lookup` returns no instances, the Coast may not be running. Follow the
+  worktree awareness flow above to resolve this with the user.
 ```
 
 ## Adding the Skill to Your Agent

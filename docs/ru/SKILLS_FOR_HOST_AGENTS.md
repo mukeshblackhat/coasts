@@ -1,22 +1,22 @@
 # Навыки для хост-агентов
 
-Если вы используете AI-агентов для кодинга (Claude Code, Codex, Conductor, Cursor или аналогичные) в проекте, который использует Coasts, вашему агенту нужен навык, который научит его взаимодействовать с рантаймом Coast. Без этого агент будет редактировать файлы, но не будет знать, как запускать тесты, проверять логи или подтверждать, что его изменения работают внутри запущенной среды.
+Если вы используете AI-агентов для программирования (Claude Code, Codex, Conductor, Cursor или аналогичные) в проекте, который использует Coasts, вашему агенту нужен навык, который научит его взаимодействовать со средой выполнения Coast. Без этого агент будет редактировать файлы, но не будет знать, как запускать тесты, проверять логи или убеждаться, что его изменения работают внутри запущенного окружения.
 
-Это руководство проводит через настройку такого навыка.
+Это руководство поможет настроить такой навык.
 
-## Зачем агентам это нужно
+## Зачем это нужно агентам
 
-Coasts разделяют [файловую систему](concepts_and_terminology/FILESYSTEM.md) между вашей хост-машиной и контейнером Coast. Ваш агент редактирует файлы на хосте, и запущенные сервисы внутри Coast сразу видят изменения. Но агенту всё равно нужно:
+Coasts предоставляет общий [filesystem](concepts_and_terminology/FILESYSTEM.md) между вашей хост-машиной и контейнером Coast. Ваш агент редактирует файлы на хосте, а запущенные внутри Coast сервисы сразу видят эти изменения. Но агенту всё равно необходимо:
 
-1. **Определить, с каким экземпляром Coast он работает** — `coast lookup` определяет это по текущей директории агента.
-2. **Запускать команды внутри Coast** — тесты, сборки и другие задачи рантайма выполняются внутри контейнера через `coast exec`.
-3. **Читать логи и проверять статус сервисов** — `coast logs` и `coast ps` дают агенту обратную связь от рантайма.
+1. **Определить, с каким экземпляром Coast он работает** — `coast lookup` определяет это по текущему каталогу агента.
+2. **Запускать команды внутри Coast** — тесты, сборки и другие задачи среды выполнения происходят внутри контейнера через `coast exec`.
+3. **Читать логи и проверять статус сервисов** — `coast logs` и `coast ps` дают агенту обратную связь от среды выполнения.
 
-Навык ниже обучает агента всем трём пунктам.
+Приведённый ниже навык обучает агента всем трём пунктам.
 
 ## Навык
 
-Добавьте следующее в существующий навык, правила или файл промпта вашего агента. Если у вашего агента уже есть инструкции по запуску тестов или взаимодействию с вашей dev-средой, это должно быть рядом с ними — это учит агента использовать Coasts для операций в рантайме.
+Добавьте следующее в существующий файл навыков, правил или промпта вашего агента. Если у вашего агента уже есть инструкции по запуску тестов или взаимодействию с вашей dev-средой, это нужно разместить рядом с ними — этот текст объясняет агенту, как использовать Coasts для операций среды выполнения.
 
 ```text-copy
 This project uses Coasts (containerized host) for isolated development environments.
@@ -73,25 +73,56 @@ If you encounter errors or unfamiliar behavior, search the Coast docs:
 This uses semantic search — describe the problem in natural language and it will
 find the relevant documentation.
 
+=== WORKTREE AWARENESS ===
+
+When you start working in a worktree — whether you created it or a tool like
+Codex, Conductor, or T3 Code created it for you — check if a Coast instance is
+already assigned:
+
+  coast lookup
+
+If `coast lookup` finds an instance, use it for all runtime commands.
+
+If it returns no instances, check what's currently running:
+
+  coast ls
+
+Then ask the user which option they prefer:
+
+Option 1 — Create a new Coast and assign this worktree:
+  coast run <new-name>
+  coast assign <new-name> -w <worktree>
+
+Option 2 — Reassign an existing Coast to this worktree:
+  coast assign <existing-name> -w <worktree>
+
+Option 3 — Skip Coast entirely:
+Continue without a runtime environment. You can edit files but cannot run tests,
+builds, or services inside a container.
+
+The <worktree> value is the branch name (run `git branch --show-current`) or
+the worktree identifier shown in `coast ls`. Always ask the user before creating
+or reassigning — do not do it automatically.
+
 === RULES ===
 
 - Always run `coast lookup` before your first runtime command in a session.
 - Do not run services directly on the host. Use `coast exec` for all runtime tasks.
 - File edits on the host are instantly visible inside the Coast. You do not need
   to copy files or rebuild after editing.
-- If `coast lookup` returns no instances, the Coast may not be running. Suggest
-  `coast run dev-1` or check `coast ls` for the project state.
+- If `coast lookup` returns no instances, the Coast may not be running. Follow the
+  worktree awareness flow above to resolve this with the user.
 ```
 
 ## Добавление навыка вашему агенту
 
-Самый быстрый способ — позволить агенту настроить себя самостоятельно. Скопируйте промпт ниже в чат вашего агента — он включает текст навыка и инструкции для агента записать его в собственный конфигурационный файл (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/coast.md` и т. п.).
+Самый быстрый способ — позволить агенту настроить себя самостоятельно. Скопируйте приведённый ниже промпт в чат вашего агента — он включает текст навыка и инструкции для агента, чтобы тот записал его в собственный файл конфигурации (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/coast.md` и т. д.).
 
 ```prompt-copy
 skills_prompt.txt
 ```
 
-Вы также можете получить тот же вывод из CLI, запустив `coast skills-prompt`.
+Вы также можете получить тот же результат через CLI, выполнив `coast skills-prompt`.
 
 ### Ручная настройка
 
@@ -99,12 +130,12 @@ skills_prompt.txt
 
 - **Claude Code:** Добавьте текст навыка в файл `CLAUDE.md` вашего проекта.
 - **Codex:** Добавьте текст навыка в файл `AGENTS.md` вашего проекта.
-- **Cursor:** Создайте `.cursor/rules/coast.md` в корне проекта и вставьте текст навыка.
-- **Другие агенты:** Вставьте текст навыка в любой файл промпта или правил на уровне проекта, который ваш агент читает при запуске.
+- **Cursor:** Создайте `.cursor/rules/coast.md` в корне проекта и вставьте туда текст навыка.
+- **Другие агенты:** Вставьте текст навыка в любой файл промпта или правил уровня проекта, который ваш агент читает при запуске.
 
 ## Дополнительное чтение
 
-- Прочитайте [документацию по Coastfiles](coastfiles/README.md), чтобы изучить полную схему конфигурации
+- Прочитайте [документацию Coastfiles](coastfiles/README.md), чтобы изучить полную схему конфигурации
 - Изучите команды [Coast CLI](concepts_and_terminology/CLI.md) для управления экземплярами
 - Ознакомьтесь с [Coastguard](concepts_and_terminology/COASTGUARD.md), веб-интерфейсом для наблюдения и управления вашими Coasts
-- Просмотрите [Concepts & Terminology](concepts_and_terminology/README.md), чтобы получить полную картину того, как работают Coasts
+- Просмотрите [Concepts & Terminology](concepts_and_terminology/README.md), чтобы получить полное представление о том, как работает Coasts

@@ -1,4 +1,4 @@
-Você está configurando as habilidades de runtime do Coast para este projeto. O Coast (host conteinerizado) executa ambientes de desenvolvimento isolados usando contêineres Docker-in-Docker. Este projeto já tem um Coastfile — seu trabalho é adicionar a habilidade de runtime do Coast à configuração do seu agente para que você possa interagir com o ambiente em execução.
+Você está configurando habilidades de runtime do Coast para este projeto. Coast (host conteinerizado) executa ambientes de desenvolvimento isolados usando contêineres Docker-in-Docker. Este projeto já possui um Coastfile — sua tarefa é adicionar a habilidade de runtime do Coast à configuração do seu agente para que você possa interagir com o ambiente em execução.
 
 === O QUE FAZER ===
 
@@ -6,9 +6,9 @@ Você está configurando as habilidades de runtime do Coast para este projeto. O
    - Claude Code: adicionar a `CLAUDE.md` na raiz do projeto (crie se não existir)
    - Codex: adicionar a `AGENTS.md` na raiz do projeto (crie se não existir)
    - Cursor: adicionar a `.cursor/rules/coast.md` na raiz do projeto (crie os diretórios se necessário)
-   - Outros agentes: adicionar a qualquer arquivo de prompt ou regras em nível de projeto que seu agente leia ao iniciar
+   - Outros agentes: adicionar a qualquer arquivo de prompt ou regras em nível de projeto que seu agente leia na inicialização
 
-2. Adicione o texto de habilidade a seguir a esse arquivo sob uma seção "Coast Runtime". Se o arquivo já existir, anexe isso como uma nova seção — não sobrescreva o conteúdo existente.
+2. Adicione o seguinte texto de habilidade a esse arquivo sob uma seção "Coast Runtime". Se o arquivo já existir, anexe isso como uma nova seção — não sobrescreva o conteúdo existente.
 
 === TEXTO DA HABILIDADE (adicione isto ao arquivo de configuração do agente) ===
 
@@ -27,10 +27,10 @@ diretório de trabalho atual:
 coast lookup
 ```
 
-Isso imprime o nome da instância, portas, URLs e comandos de exemplo. Use o nome da instância da saída
-para todos os comandos subsequentes.
+Isso imprime o nome da instância, portas, URLs e comandos de exemplo. Use o nome da instância
+da saída para todos os comandos subsequentes.
 
-Se você precisar de mais contexto sobre como os Coasts funcionam, leia estes documentos:
+Se você precisar de um contexto mais profundo sobre como os Coasts funcionam, leia estes documentos:
 
 ```
 coast docs --path concepts_and_terminology/LOOKUP.md
@@ -42,7 +42,7 @@ coast docs --path concepts_and_terminology/LOGS.md
 ## Running Commands
 
 Use `coast exec` para executar comandos dentro do Coast. O shell inicia na raiz do workspace
-(onde o Coastfile está). Faça cd para o diretório de destino primeiro:
+(onde está o Coastfile). Primeiro, faça cd para o diretório de destino:
 
 ```
 coast exec <instance> -- sh -c "cd <dir> && <command>"
@@ -73,25 +73,64 @@ coast logs <instance> --service <service> --tail 50
 
 ## Troubleshooting
 
-Se você encontrar erros ou comportamentos desconhecidos, pesquise na documentação do Coast:
+Se você encontrar erros ou comportamento incomum, pesquise na documentação do Coast:
 
 ```
-coast search-docs "error message or description"
+coast search-docs "mensagem de erro ou descrição"
 ```
 
-Isto usa busca semântica — descreva o problema em linguagem natural e ele irá
-encontrar a documentação relevante.
+Isto usa busca semântica — descreva o problema em linguagem natural e ela
+encontrará a documentação relevante.
+
+## Worktree Awareness
+
+Quando você começar a trabalhar em uma worktree — quer ela tenha sido criada por você ou por uma ferramenta como
+Codex, Conductor ou T3 Code — verifique se uma instância do Coast já está
+atribuída:
+
+```
+coast lookup
+```
+
+Se `coast lookup` encontrar uma instância, use-a para todos os comandos de runtime.
+
+Se não retornar nenhuma instância, verifique o que está em execução no momento:
+
+```
+coast ls
+```
+
+Então pergunte ao usuário qual opção ele prefere:
+
+**Option 1 — Create a new Coast and assign this worktree:**
+```
+coast run <new-name>
+coast assign <new-name> -w <worktree>
+```
+
+**Option 2 — Reassign an existing Coast to this worktree:**
+```
+coast assign <existing-name> -w <worktree>
+```
+
+**Option 3 — Skip Coast entirely:**
+Continue sem um ambiente de runtime. Você pode editar arquivos, mas não pode executar testes,
+builds ou serviços dentro de um contêiner.
+
+O valor de `<worktree>` é o nome da branch (execute `git branch --show-current`) ou
+o identificador da worktree mostrado em `coast ls`. Sempre pergunte ao usuário antes de criar
+ou reatribuir — não faça isso automaticamente.
 
 ## Rules
 
 - Sempre execute `coast lookup` antes do seu primeiro comando de runtime em uma sessão.
 - Não execute serviços diretamente no host. Use `coast exec` para todas as tarefas de runtime.
-- Edições de arquivos no host ficam instantaneamente visíveis dentro do Coast. Você não precisa
+- As edições de arquivos no host são visíveis instantaneamente dentro do Coast. Você não precisa
   copiar arquivos nem reconstruir após editar.
-- Se `coast lookup` não retornar instâncias, o Coast pode não estar em execução. Sugira
-  `coast run dev-1` ou verifique `coast ls` para o estado do projeto.
+- Se `coast lookup` não retornar nenhuma instância, o Coast pode não estar em execução. Siga o
+  fluxo de reconhecimento de worktree acima para resolver isso com o usuário.
 
 === FIM DO TEXTO DA HABILIDADE ===
 
-3. Depois de escrever o arquivo, verifique se o Coastfile existe neste projeto executando `ls Coastfile`.
+3. Após escrever o arquivo, verifique se o Coastfile existe neste projeto executando `ls Coastfile`.
 4. Se um Coast já estiver em execução, execute `coast lookup` para confirmar que a habilidade funciona. Se nenhum Coast estiver em execução, diga ao usuário que ele pode iniciar um com `coast run dev-1`.

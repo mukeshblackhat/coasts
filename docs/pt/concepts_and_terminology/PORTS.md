@@ -4,9 +4,9 @@ O Coast gerencia dois tipos de mapeamentos de portas para cada serviço em uma i
 
 ## Portas Canônicas
 
-Estas são as portas em que seu projeto normalmente roda — as do seu `docker-compose.yml` ou da configuração local de desenvolvimento. Por exemplo, `3000` para um servidor web, `5432` para o Postgres.
+Estas são as portas em que seu projeto normalmente roda — aquelas no seu `docker-compose.yml` ou na configuração local de desenvolvimento. Por exemplo, `3000` para um servidor web, `5432` para o Postgres.
 
-Apenas um Coast pode ter as portas canônicas por vez. O Coast que estiver com [checkout](CHECKOUT.md) recebe essas portas.
+Apenas um Coast pode ter portas canônicas por vez. Aquele que estiver em [checkout](CHECKOUT.md) as recebe.
 
 ```text
 coast checkout dev-1
@@ -15,11 +15,13 @@ localhost:3000  ──→  dev-1
 localhost:5432  ──→  dev-1
 ```
 
-Isso significa que seu navegador, clientes de API, ferramentas de banco de dados e suítes de teste funcionam exatamente como normalmente funcionariam — sem necessidade de alterar números de porta.
+Isso significa que seu navegador, clientes de API, ferramentas de banco de dados e suítes de teste funcionam exatamente como normalmente funcionariam — sem necessidade de mudar números de porta.
+
+No Linux, portas canônicas abaixo de `1024` podem exigir configuração no host antes que [`coast checkout`](CHECKOUT.md) possa vinculá-las. Portas dinâmicas não têm essa restrição.
 
 ## Portas Dinâmicas
 
-Todo Coast em execução sempre recebe seu próprio conjunto de portas dinâmicas em uma faixa alta (49152–65535). Elas são atribuídas automaticamente e estão sempre acessíveis, independentemente de qual Coast está com checkout.
+Cada Coast em execução sempre recebe seu próprio conjunto de portas dinâmicas em uma faixa alta (49152–65535). Elas são atribuídas automaticamente e estão sempre acessíveis, independentemente de qual Coast esteja em checkout.
 
 ```text
 coast ports dev-1
@@ -35,7 +37,7 @@ coast ports dev-2
 #   db       5432       57220
 ```
 
-Portas dinâmicas permitem que você dê uma olhada em qualquer Coast sem fazer checkout nele. Você pode abrir `localhost:63104` para acessar o servidor web do dev-2 enquanto o dev-1 está com checkout nas portas canônicas.
+As portas dinâmicas permitem que você dê uma olhada em qualquer Coast sem colocá-lo em checkout. Você pode abrir `localhost:63104` para acessar o servidor web do dev-2 enquanto o dev-1 está em checkout nas portas canônicas.
 
 ## Como Elas Funcionam Juntas
 
@@ -43,7 +45,7 @@ Portas dinâmicas permitem que você dê uma olhada em qualquer Coast sem fazer 
 ┌──────────────────────────────────────────────────┐
 │  Sua máquina                                     │
 │                                                  │
-│  Canônicas (apenas o Coast com checkout):        │
+│  Canônicas (apenas o Coast em checkout):         │
 │    localhost:3000 ──→ dev-1 web                  │
 │    localhost:5432 ──→ dev-1 db                   │
 │                                                  │
@@ -55,6 +57,6 @@ Portas dinâmicas permitem que você dê uma olhada em qualquer Coast sem fazer 
 └──────────────────────────────────────────────────┘
 ```
 
-Alternar o [checkout](CHECKOUT.md) é instantâneo — o Coast encerra e recria encaminhadores `socat` leves. Nenhum container é reiniciado.
+Alternar o [checkout](CHECKOUT.md) é instantâneo — o Coast encerra e recria encaminhadores leves do `socat`. Nenhum contêiner é reiniciado.
 
-Veja também [Primary Port & DNS](PRIMARY_PORT_AND_DNS.md) para links rápidos, roteamento por subdomínio e modelos de URL.
+Veja também [Porta Primária e DNS](PRIMARY_PORT_AND_DNS.md) para links rápidos, roteamento por subdomínio e modelos de URL.

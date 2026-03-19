@@ -1,22 +1,22 @@
-# Habilidades para Agentes no Host
+# Habilidades para Agentes Host
 
-Se você estiver usando agentes de codificação com IA (Claude Code, Codex, Conductor, Cursor ou similares) em um projeto que usa Coasts, seu agente precisa de uma habilidade que o ensine a interagir com o runtime do Coast. Sem isso, o agente vai editar arquivos, mas não saberá como executar testes, verificar logs ou confirmar que suas alterações funcionam dentro do ambiente em execução.
+Se você estiver usando agentes de programação com IA (Claude Code, Codex, Conductor, Cursor ou similares) em um projeto que usa Coasts, seu agente precisa de uma habilidade que o ensine a interagir com o runtime do Coast. Sem isso, o agente editará arquivos, mas não saberá como executar testes, verificar logs ou confirmar que suas mudanças funcionam dentro do ambiente em execução.
 
 Este guia mostra como configurar essa habilidade.
 
 ## Por que os Agentes Precisam Disso
 
-Os Coasts compartilham o [filesystem](concepts_and_terminology/FILESYSTEM.md) entre sua máquina host e o container do Coast. Seu agente edita arquivos no host e os serviços em execução dentro do Coast veem as mudanças imediatamente. Mas o agente ainda precisa:
+Os Coasts compartilham o [sistema de arquivos](concepts_and_terminology/FILESYSTEM.md) entre sua máquina host e o contêiner do Coast. Seu agente edita arquivos no host e os serviços em execução dentro do Coast veem as mudanças imediatamente. Mas o agente ainda precisa:
 
-1. **Descobrir com qual instância do Coast ele está trabalhando** — `coast lookup` resolve isso a partir do diretório atual do agente.
-2. **Executar comandos dentro do Coast** — testes, builds e outras tarefas de runtime acontecem dentro do container via `coast exec`.
-3. **Ler logs e verificar o status dos serviços** — `coast logs` e `coast ps` dão ao agente feedback do runtime.
+1. **Descobrir com qual instância do Coast está trabalhando** — `coast lookup` resolve isso a partir do diretório atual do agente.
+2. **Executar comandos dentro do Coast** — testes, builds e outras tarefas de runtime acontecem dentro do contêiner via `coast exec`.
+3. **Ler logs e verificar o status dos serviços** — `coast logs` e `coast ps` dão ao agente feedback de runtime.
 
-A habilidade abaixo ensina ao agente as três coisas.
+A habilidade abaixo ensina ao agente os três.
 
 ## A Habilidade
 
-Adicione o seguinte à habilidade, regras ou arquivo de prompt existente do seu agente. Se o seu agente já tiver instruções para executar testes ou interagir com seu ambiente de dev, isto deve ficar junto dessas instruções — ele ensina o agente a usar Coasts para operações de runtime.
+Adicione o seguinte à habilidade, regras ou arquivo de prompt existente do seu agente. Se o seu agente já tiver instruções para executar testes ou interagir com seu ambiente de desenvolvimento, isso deve ficar junto delas — isso ensina o agente a usar Coasts para operações de runtime.
 
 ```text-copy
 This project uses Coasts (containerized host) for isolated development environments.
@@ -73,19 +73,50 @@ If you encounter errors or unfamiliar behavior, search the Coast docs:
 This uses semantic search — describe the problem in natural language and it will
 find the relevant documentation.
 
+=== WORKTREE AWARENESS ===
+
+When you start working in a worktree — whether you created it or a tool like
+Codex, Conductor, or T3 Code created it for you — check if a Coast instance is
+already assigned:
+
+  coast lookup
+
+If `coast lookup` finds an instance, use it for all runtime commands.
+
+If it returns no instances, check what's currently running:
+
+  coast ls
+
+Then ask the user which option they prefer:
+
+Option 1 — Create a new Coast and assign this worktree:
+  coast run <new-name>
+  coast assign <new-name> -w <worktree>
+
+Option 2 — Reassign an existing Coast to this worktree:
+  coast assign <existing-name> -w <worktree>
+
+Option 3 — Skip Coast entirely:
+Continue without a runtime environment. You can edit files but cannot run tests,
+builds, or services inside a container.
+
+The <worktree> value is the branch name (run `git branch --show-current`) or
+the worktree identifier shown in `coast ls`. Always ask the user before creating
+or reassigning — do not do it automatically.
+
 === RULES ===
 
 - Always run `coast lookup` before your first runtime command in a session.
 - Do not run services directly on the host. Use `coast exec` for all runtime tasks.
 - File edits on the host are instantly visible inside the Coast. You do not need
   to copy files or rebuild after editing.
-- If `coast lookup` returns no instances, the Coast may not be running. Suggest
-  `coast run dev-1` or check `coast ls` for the project state.
+- If `coast lookup` returns no instances, the Coast may not be running. Follow the
+  worktree awareness flow above to resolve this with the user.
 ```
 
 ## Adicionando a Habilidade ao Seu Agente
 
-A forma mais rápida é deixar o agente se configurar sozinho. Copie o prompt abaixo para o chat do seu agente — ele inclui o texto da habilidade e instruções para o agente gravá-lo no próprio arquivo de configuração (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/coast.md`, etc.).
+A maneira mais rápida é deixar que o próprio agente se configure. Copie o prompt abaixo para o chat do seu agente — ele inclui o texto da habilidade e instruções para o agente gravá-lo em seu próprio arquivo de configuração (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/coast.md`, etc.).
 
 ```prompt-copy
 skills_prompt.txt
@@ -95,16 +126,16 @@ Você também pode obter a mesma saída pela CLI executando `coast skills-prompt
 
 ### Configuração manual
 
-Se você preferir adicionar a habilidade por conta própria:
+Se preferir adicionar a habilidade por conta própria:
 
 - **Claude Code:** Adicione o texto da habilidade ao arquivo `CLAUDE.md` do seu projeto.
 - **Codex:** Adicione o texto da habilidade ao arquivo `AGENTS.md` do seu projeto.
 - **Cursor:** Crie `.cursor/rules/coast.md` na raiz do seu projeto e cole o texto da habilidade.
-- **Outros agentes:** Cole o texto da habilidade em qualquer arquivo de prompt ou regras em nível de projeto que seu agente leia ao iniciar.
+- **Outros agentes:** Cole o texto da habilidade em qualquer arquivo de prompt ou regras no nível do projeto que seu agente leia na inicialização.
 
 ## Leitura adicional
 
-- Leia a [documentação de Coastfiles](coastfiles/README.md) para aprender o esquema completo de configuração
+- Leia a [documentação dos Coastfiles](coastfiles/README.md) para aprender o esquema completo de configuração
 - Aprenda os comandos da [CLI do Coast](concepts_and_terminology/CLI.md) para gerenciar instâncias
-- Explore o [Coastguard](concepts_and_terminology/COASTGUARD.md), a UI web para observar e controlar seus Coasts
-- Navegue por [Conceitos & Terminologia](concepts_and_terminology/README.md) para ter a visão completa de como os Coasts funcionam
+- Explore o [Coastguard](concepts_and_terminology/COASTGUARD.md), a interface web para observar e controlar seus Coasts
+- Navegue por [Conceitos e Terminologia](concepts_and_terminology/README.md) para ter a visão completa de como os Coasts funcionam

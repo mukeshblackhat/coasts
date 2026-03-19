@@ -1,12 +1,12 @@
 # ポート
 
-Coast は、Coast インスタンス内の各サービスに対して 2 種類のポートマッピング（カノニカルポートとダイナミックポート）を管理します。
+Coast は、Coast インスタンス内のすべてのサービスに対して、2 種類のポートマッピングを管理します: canonical ports と dynamic ports です。
 
-## カノニカルポート
+## Canonical Ports
 
-これらは、プロジェクトが通常使用するポートです — `docker-compose.yml` やローカル開発設定にあるもの。たとえば、Web サーバーなら `3000`、Postgres なら `5432` です。
+これらは、あなたのプロジェクトが通常実行されるポートです — `docker-compose.yml` やローカル開発設定にあるものです。たとえば、Web サーバーなら `3000`、Postgres なら `5432` です。
 
-同時にカノニカルポートを持てる Coast は 1 つだけです。[チェックアウト](CHECKOUT.md)されている Coast がそれを取得します。
+同時に canonical ports を持てる Coast は 1 つだけです。[チェックアウト](CHECKOUT.md) されている Coast がそれらを取得します。
 
 ```text
 coast checkout dev-1
@@ -15,11 +15,13 @@ localhost:3000  ──→  dev-1
 localhost:5432  ──→  dev-1
 ```
 
-つまり、ブラウザ、API クライアント、データベースツール、テストスイートはすべて、通常どおりにそのまま動作します — ポート番号を変更する必要はありません。
+これは、ブラウザ、API クライアント、データベースツール、テストスイートのすべてが、通常どおり正確に動作することを意味します — ポート番号を変更する必要はありません。
 
-## ダイナミックポート
+Linux では、`1024` 未満の canonical ports は、[`coast checkout`](CHECKOUT.md) がそれらにバインドできるようになる前に、ホストの設定が必要になる場合があります。dynamic ports にはこの制限はありません。
 
-実行中の Coast は常に、それぞれが高い範囲（49152–65535）にある独自のダイナミックポートのセットを取得します。これらは自動的に割り当てられ、どの Coast がチェックアウトされているかに関係なく、常にアクセス可能です。
+## Dynamic Ports
+
+実行中のすべての Coast は、それぞれ高い範囲 (49152–65535) の dynamic ports の独自セットを常に取得します。これらは自動的に割り当てられ、どの Coast がチェックアウトされているかに関係なく、常にアクセス可能です。
 
 ```text
 coast ports dev-1
@@ -35,19 +37,19 @@ coast ports dev-2
 #   db       5432       57220
 ```
 
-ダイナミックポートを使うと、チェックアウトせずに任意の Coast を覗くことができます。dev-1 がカノニカルポートでチェックアウトされている間でも、`localhost:63104` を開けば dev-2 の Web サーバーにアクセスできます。
+dynamic ports を使うと、チェックアウトせずに任意の Coast をのぞき見ることができます。canonical ports では dev-1 がチェックアウトされている間でも、`localhost:63104` を開いて dev-2 の Web サーバーにアクセスできます。
 
-## どのように連携するか
+## それらがどのように連携するか
 
 ```text
 ┌──────────────────────────────────────────────────┐
-│  あなたのマシン                                  │
+│  Your machine                                    │
 │                                                  │
-│  カノニカル（チェックアウト中の Coast のみ）:     │
+│  Canonical (checked-out Coast only):             │
 │    localhost:3000 ──→ dev-1 web                  │
 │    localhost:5432 ──→ dev-1 db                   │
 │                                                  │
-│  ダイナミック（常に利用可能）:                    │
+│  Dynamic (always available):                     │
 │    localhost:62217 ──→ dev-1 web                 │
 │    localhost:55681 ──→ dev-1 db                  │
 │    localhost:63104 ──→ dev-2 web                 │
@@ -55,6 +57,6 @@ coast ports dev-2
 └──────────────────────────────────────────────────┘
 ```
 
-[チェックアウト](CHECKOUT.md)の切り替えは即時です — Coast は軽量な `socat` フォワーダーを停止して再生成します。コンテナは再起動されません。
+[checkout](CHECKOUT.md) の切り替えは一瞬です — Coast は軽量な `socat` フォワーダーを停止して再生成します。コンテナが再起動されることはありません。
 
-クイックリンク、サブドメインルーティング、URL テンプレートについては [Primary Port & DNS](PRIMARY_PORT_AND_DNS.md) も参照してください。
+クイックリンク、サブドメインルーティング、URL テンプレートについては、[Primary Port & DNS](PRIMARY_PORT_AND_DNS.md) も参照してください。
