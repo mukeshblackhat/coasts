@@ -143,6 +143,8 @@ mod tests {
         tx
     }
 
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
     struct HomeEnvGuard {
         _guard: MutexGuard<'static, ()>,
         previous_home: Option<OsString>,
@@ -171,8 +173,7 @@ mod tests {
     }
 
     fn set_test_home(path: &Path) -> HomeEnvGuard {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let guard = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         std::fs::create_dir_all(path).unwrap();
         let previous_home = std::env::var_os("HOME");
         let previous_coast_home = std::env::var_os("COAST_HOME");
@@ -188,8 +189,7 @@ mod tests {
     }
 
     fn set_test_home_and_coast_home(home: &Path, coast_home: &Path) -> HomeEnvGuard {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let guard = LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         std::fs::create_dir_all(home).unwrap();
         std::fs::create_dir_all(coast_home).unwrap();
         let previous_home = std::env::var_os("HOME");

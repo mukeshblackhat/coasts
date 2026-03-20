@@ -34,9 +34,13 @@ pub(super) fn shared_caddy_pki_host_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     #[test]
     fn test_shared_caddy_pki_host_dir_uses_coast_home_env() {
+        let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let prev = std::env::var_os("COAST_HOME");
         unsafe {
             std::env::set_var("COAST_HOME", "/tmp/coast-dev-test-home");
@@ -53,6 +57,7 @@ mod tests {
 
     #[test]
     fn test_shared_caddy_pki_host_dir_differs_for_distinct_install_homes() {
+        let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let prev = std::env::var_os("COAST_HOME");
 
         unsafe {
