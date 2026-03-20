@@ -62,6 +62,15 @@ Dev mode uses `~/.coast-dev/` and port 31416, so it never conflicts with a globa
 
 That separation also applies to local HTTPS trust. `coast-dev` reuses a stable Caddy root under `~/.coast-dev/caddy/pki/...`, while the regular install uses `~/.coast/caddy/pki/...`.
 
+You can inspect or export the active install's root certificate with:
+
+```bash
+coast cert info
+coast cert export --to ~/Downloads/coast-root.crt
+```
+
+Coast does not install the certificate into your OS or browser trust store automatically. Export it, then import/trust it wherever your environment needs it.
+
 ### Day-to-day development workflow
 
 You'll want three terminals:

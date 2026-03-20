@@ -47,6 +47,17 @@ The root certificate lives at:
 
 Those are intentionally separate, so trusting `coast-dev` does not also trust a regular `coast` install, and vice versa.
 
+To inspect or export the active install's root certificate:
+
+```bash
+coast cert info
+coast cert path
+coast cert fingerprint
+coast cert export --to ~/Downloads/coast-root.crt
+```
+
+Coast leaves trust installation up to you. Export the cert, then import it into your OS or browser trust store as needed.
+
 ## Do You Need to Check Out?
 
 Not necessarily. Every running Coast always has its own dynamic ports, and you can access any Coast through those ports at any time without checking anything out.

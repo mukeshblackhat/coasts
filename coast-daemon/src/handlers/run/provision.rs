@@ -182,6 +182,8 @@ pub(super) async fn provision_instance(
     )
     .await?;
 
+    normalize_shared_caddy_pki_permissions(docker, &container_id).await;
+
     Ok(ProvisionResult {
         container_id,
         pre_allocated_ports: resources.pre_allocated_ports,
@@ -489,14 +491,9 @@ async fn create_container(
     );
     append_shared_caddy_pki_bind_mount(&mut config, &shared_caddy_pki_host_dir);
 
-    if let Ok(cf) = coast_core::coastfile::Coastfile::from_file(
-        &home
-            .join(".coast")
-            .join("images")
-            .join(&req.project)
-            .join("latest")
-            .join("coastfile.toml"),
-    ) {
+    if let Ok(cf) =
+        coast_core::coastfile::Coastfile::from_file(&artifact_dir_path.join("coastfile.toml"))
+    {
         for (idx, resolved) in cf.external_worktree_dirs() {
             config.bind_mounts.push(coast_docker::runtime::BindMount {
                 host_path: resolved,
@@ -549,6 +546,54 @@ fn append_shared_caddy_pki_bind_mount(
         read_only: false,
         propagation: None,
     });
+}
+
+async fn normalize_shared_caddy_pki_permissions(docker: &bollard::Docker, container_id: &str) {
+    let runtime = coast_docker::dind::DindRuntime::with_client(docker.clone());
+    let command = shared_caddy_pki_permission_fixup_command();
+    let command_refs: Vec<&str> = command.iter().map(std::string::String::as_str).collect();
+
+    match runtime.exec_in_coast(container_id, &command_refs).await {
+        Ok(result) if result.success() => {
+            debug!(container_id, "normalized shared Caddy PKI permissions");
+        }
+        Ok(result) => {
+            warn!(
+                container_id,
+                exit_code = result.exit_code,
+                stderr = %result.stderr,
+                "failed to normalize shared Caddy PKI permissions"
+            );
+        }
+        Err(error) => {
+            warn!(
+                container_id,
+                error = %error,
+                "failed to exec shared Caddy PKI permission fixup"
+            );
+        }
+    }
+}
+
+fn shared_caddy_pki_permission_fixup_command() -> Vec<String> {
+    let base = paths::SHARED_CADDY_PKI_CONTAINER_PATH;
+    let script = format!(
+        "set -eu; \
+         base='{base}'; \
+         if [ ! -d \"$base\" ]; then exit 0; fi; \
+         chmod 755 \"$base\" 2>/dev/null || true; \
+         for dir in \"$base/authorities\" \"$base/authorities/local\"; do \
+             [ -d \"$dir\" ] && chmod 755 \"$dir\" 2>/dev/null || true; \
+         done; \
+         for cert in \"$base/authorities/local/root.crt\" \"$base/authorities/local/intermediate.crt\"; do \
+             [ -f \"$cert\" ] && chmod 644 \"$cert\" 2>/dev/null || true; \
+         done; \
+         for key in \"$base/authorities/local/root.key\" \"$base/authorities/local/intermediate.key\"; do \
+             [ -f \"$key\" ] && chmod 600 \"$key\" 2>/dev/null || true; \
+         done"
+    );
+
+    vec!["sh".into(), "-lc".into(), script]
 }
 
 fn read_coast_image(artifact_dir: &std::path::Path) -> Option<String> {
@@ -849,6 +894,22 @@ mod tests {
                 && mount.container_path == paths::SHARED_CADDY_PKI_CONTAINER_PATH
                 && !mount.read_only
         }));
+    }
+
+    #[test]
+    fn test_shared_caddy_pki_permission_fixup_command_exposes_public_cert_only() {
+        let command = shared_caddy_pki_permission_fixup_command();
+        assert_eq!(command[0], "sh");
+        assert_eq!(command[1], "-lc");
+        let script = &command[2];
+
+        assert!(script.contains("base='/coast-caddy-pki'"));
+        assert!(script.contains("\"$base/authorities/local/root.crt\""));
+        assert!(script.contains("\"$base/authorities/local/intermediate.crt\""));
+        assert!(script.contains("chmod 644"));
+        assert!(script.contains("\"$base/authorities/local/root.key\""));
+        assert!(script.contains("\"$base/authorities/local/intermediate.key\""));
+        assert!(script.contains("chmod 600"));
     }
 
     #[tokio::test]
