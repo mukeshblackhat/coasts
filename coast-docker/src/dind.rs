@@ -555,41 +555,26 @@ impl Runtime for DindRuntime {
 /// If `coast_image` is provided (from `[coast.setup]` in the Coastfile),
 /// it will be used instead of the default `docker:dind` image.
 pub fn build_dind_config(params: DindConfigParams<'_>) -> ContainerConfig {
-    let DindConfigParams {
-        project,
-        instance_name,
-        code_path,
-        env_vars,
-        bind_mounts,
-        volume_mounts,
-        tmpfs_mounts,
-        image_cache_path,
-        artifact_dir,
-        coast_image,
-        override_dir,
-        extra_hosts,
-    } = params;
-
-    let image = coast_image.unwrap_or(DIND_IMAGE);
-    let mut config = ContainerConfig::new(project, instance_name, image);
-    config.env_vars = env_vars;
-    config.bind_mounts = bind_mounts;
-    config.volume_mounts = volume_mounts;
-    config.tmpfs_mounts = tmpfs_mounts;
-    config.extra_hosts = extra_hosts;
+    let image = params.coast_image.unwrap_or(DIND_IMAGE);
+    let mut config = ContainerConfig::new(params.project, params.instance_name, image);
+    config.env_vars = params.env_vars;
+    config.bind_mounts = params.bind_mounts;
+    config.volume_mounts = params.volume_mounts;
+    config.tmpfs_mounts = params.tmpfs_mounts;
+    config.extra_hosts = params.extra_hosts;
 
     // Bind-mount the project root at /host-project. The run/start handlers
     // create a switchable `mount --bind /host-project /workspace` (or a
     // worktree subdirectory) inside the container after it starts.
     config.bind_mounts.push(BindMount {
-        host_path: code_path.to_path_buf(),
+        host_path: params.code_path.to_path_buf(),
         container_path: "/host-project".to_string(),
         read_only: false,
         propagation: None,
     });
 
     // Mount image cache read-only if available
-    if let Some(cache_path) = image_cache_path {
+    if let Some(cache_path) = params.image_cache_path {
         config.bind_mounts.push(BindMount {
             host_path: cache_path.to_path_buf(),
             container_path: "/image-cache".to_string(),
@@ -599,7 +584,7 @@ pub fn build_dind_config(params: DindConfigParams<'_>) -> ContainerConfig {
     }
 
     // Mount artifact directory read-only if available (contains rewritten compose, etc.)
-    if let Some(artifact_path) = artifact_dir {
+    if let Some(artifact_path) = params.artifact_dir {
         config.bind_mounts.push(BindMount {
             host_path: artifact_path.to_path_buf(),
             container_path: "/coast-artifact".to_string(),
@@ -609,7 +594,7 @@ pub fn build_dind_config(params: DindConfigParams<'_>) -> ContainerConfig {
     }
 
     // Mount compose override directory if available (written to ~/.coast/overrides/)
-    if let Some(ovr_path) = override_dir {
+    if let Some(ovr_path) = params.override_dir {
         config.bind_mounts.push(BindMount {
             host_path: ovr_path.to_path_buf(),
             container_path: "/coast-override".to_string(),
@@ -623,7 +608,7 @@ pub fn build_dind_config(params: DindConfigParams<'_>) -> ContainerConfig {
     // container removal (coast rm + coast run), dramatically speeding up
     // subsequent runs for the same instance name (~21s → ~8s) by avoiding
     // the expensive `docker load` of OCI tarballs into the inner daemon.
-    let dind_volume_name = dind_cache_volume_name(project, instance_name);
+    let dind_volume_name = dind_cache_volume_name(params.project, params.instance_name);
     config.volume_mounts.push(VolumeMount {
         volume_name: dind_volume_name,
         container_path: "/var/lib/docker".to_string(),
