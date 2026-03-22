@@ -41,6 +41,7 @@ pub mod unassign;
 pub mod update;
 
 use anyhow::{bail, Context, Result};
+use rusqlite::OptionalExtension;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 
@@ -54,6 +55,41 @@ fn socket_path() -> std::path::PathBuf {
     coast_core::artifact::coast_home()
         .expect("Could not determine coast home directory")
         .join("coastd.sock")
+}
+
+fn state_db_path() -> Result<std::path::PathBuf> {
+    Ok(coast_core::artifact::coast_home()?.join("state.db"))
+}
+
+fn resolve_instance_build_id_from_db_path(
+    db_path: &std::path::Path,
+    project: &str,
+    name: &str,
+) -> Option<String> {
+    let conn = rusqlite::Connection::open_with_flags(
+        db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .ok()?;
+
+    let mut stmt = conn
+        .prepare("SELECT build_id FROM instances WHERE project = ?1 AND name = ?2 LIMIT 1")
+        .ok()?;
+
+    stmt.query_row(rusqlite::params![project, name], |row| row.get(0))
+        .optional()
+        .ok()
+        .flatten()
+}
+
+/// Best-effort lookup of the build backing a specific instance.
+///
+/// Interactive CLI paths use this to resolve compose context without routing
+/// through the daemon. If the state DB is unavailable, callers can safely
+/// fall back to latest-build behavior.
+pub(super) fn resolve_instance_build_id(project: &str, name: &str) -> Option<String> {
+    let db_path = state_db_path().ok()?;
+    resolve_instance_build_id_from_db_path(&db_path, project, name)
 }
 
 /// Send a request to the coastd daemon and receive a response.
@@ -784,6 +820,46 @@ fn pad_colored_visible(colored: &str, visible_len: usize, width: usize) -> Strin
 mod tests {
     use super::*;
     use colored::control;
+    use std::ffi::OsString;
+    use std::path::Path;
+    use std::sync::{Mutex, OnceLock};
+
+    fn coast_home_env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct CoastHomeGuard {
+        prev: Option<OsString>,
+    }
+
+    impl CoastHomeGuard {
+        fn set(path: &Path) -> Self {
+            let prev = std::env::var_os("COAST_HOME");
+            unsafe {
+                std::env::set_var("COAST_HOME", path);
+            }
+            Self { prev }
+        }
+    }
+
+    impl Drop for CoastHomeGuard {
+        fn drop(&mut self) {
+            match &self.prev {
+                Some(value) => unsafe { std::env::set_var("COAST_HOME", value) },
+                None => unsafe { std::env::remove_var("COAST_HOME") },
+            }
+        }
+    }
+
+    fn with_temp_coast_home<T>(f: impl FnOnce(&Path) -> T) -> T {
+        let _lock = coast_home_env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let dir = tempfile::tempdir().expect("tempdir");
+        let _guard = CoastHomeGuard::set(dir.path());
+        f(dir.path())
+    }
 
     fn strip_ansi(s: &str) -> String {
         let mut out = String::with_capacity(s.len());
@@ -812,13 +888,57 @@ mod tests {
 
     #[test]
     fn test_socket_path() {
-        let path = socket_path();
+        with_temp_coast_home(|coast_home| {
+            let path = socket_path();
+            assert_eq!(path, coast_home.join("coastd.sock"));
+        });
+    }
+
+    #[test]
+    fn test_resolve_instance_build_id_reads_state_db() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("state.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("open state db");
+        conn.execute_batch(
+            "CREATE TABLE instances (
+                name TEXT,
+                project TEXT,
+                build_id TEXT
+            );",
+        )
+        .expect("create instances table");
+        conn.execute(
+            "INSERT INTO instances (name, project, build_id) VALUES (?1, ?2, ?3)",
+            rusqlite::params!["dev-1", "my-app", "build-123"],
+        )
+        .expect("insert row");
+        drop(conn);
+
         assert_eq!(
-            path.file_name().and_then(|f| f.to_str()),
-            Some("coastd.sock"),
+            resolve_instance_build_id_from_db_path(&db_path, "my-app", "dev-1").as_deref(),
+            Some("build-123")
         );
-        let expected_parent = coast_core::artifact::coast_home().unwrap();
-        assert_eq!(path.parent().unwrap(), expected_parent);
+    }
+
+    #[test]
+    fn test_resolve_instance_build_id_returns_none_when_missing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("state.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("open state db");
+        conn.execute_batch(
+            "CREATE TABLE instances (
+                name TEXT,
+                project TEXT,
+                build_id TEXT
+            );",
+        )
+        .expect("create instances table");
+        drop(conn);
+
+        assert_eq!(
+            resolve_instance_build_id_from_db_path(&db_path, "my-app", "dev-1"),
+            None
+        );
     }
 
     #[test]

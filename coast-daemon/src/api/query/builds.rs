@@ -7,6 +7,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use coast_core::artifact::coast_home;
 use coast_core::protocol::{BuildsRequest, CoastfileTypesResponse};
 
 use crate::handlers;
@@ -192,8 +193,10 @@ async fn builds_coastfile_types(
     let project = params.project;
 
     let project_root = {
-        let home = dirs::home_dir().unwrap_or_default();
-        let project_dir = home.join(".coast").join("images").join(&project);
+        let project_dir = coast_home()
+            .ok()
+            .map(|home| home.join("images").join(&project))
+            .unwrap_or_default();
 
         // Try to read project_root from the latest manifest
         let manifest_path = std::fs::read_link(project_dir.join("latest"))

@@ -116,6 +116,7 @@ pub async fn execute(args: &LookupArgs, project: &str) -> Result<()> {
                             "    coast exec {} -- sh -c \"cd <dir> && <command>\"",
                             inst.name
                         );
+                        println!("    coast exec {} --service <service>", inst.name);
                         println!("    coast logs {} --service <service>", inst.name);
                         println!("    coast ps {}", inst.name);
                     }

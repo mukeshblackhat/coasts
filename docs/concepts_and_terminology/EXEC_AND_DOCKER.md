@@ -20,9 +20,13 @@ You can also run a specific command without entering an interactive shell:
 coast exec dev-1 ls -la
 coast exec dev-1 -- npm install
 coast exec dev-1 -- go test ./...
+coast exec dev-1 --service web
+coast exec dev-1 --service web -- php artisan test
 ```
 
 Everything after the instance name is passed as the command. Use `--` to separate flags that belong to your command from flags that belong to `coast exec`.
+
+Pass `--service <name>` to target a specific compose service container instead of the outer Coast container. Pass `--root` when you need raw container-root access instead of Coast's default host UID:GID mapping.
 
 ### Working Directory
 
@@ -54,7 +58,7 @@ While `coast exec` gives you a shell in the DinD container itself, `coast docker
 ```bash
 coast docker dev-1                    # defaults to: docker ps
 coast docker dev-1 ps                 # same as above
-coast docker dev-1 compose ps         # docker compose ps (inner services)
+coast docker dev-1 compose ps         # docker compose ps for the active Coast-managed stack
 coast docker dev-1 images             # list images in the inner daemon
 coast docker dev-1 compose logs web   # docker compose logs for a service
 ```
@@ -68,6 +72,7 @@ The distinction is what you are targeting:
 | Command | Runs as | Target |
 |---|---|---|
 | `coast exec dev-1 ls /workspace` | `sh -c "ls /workspace"` in DinD container | The Coast container itself (your project files, installed tools) |
+| `coast exec dev-1 --service web` | `docker exec ... sh` in the resolved inner service container | A specific compose service container |
 | `coast docker dev-1 ps` | `docker ps` in DinD container | The inner Docker daemon (your compose service containers) |
 | `coast docker dev-1 compose logs web` | `docker compose logs web` in DinD container | A specific compose service's logs via the inner daemon |
 
@@ -95,7 +100,7 @@ Beyond the instance-level exec tab, Coastguard also provides terminal access at 
 
 ## When to Use Which
 
-- **`coast exec`** — run project-level commands (npm install, go test, file inspection, debugging) inside the DinD container.
+- **`coast exec`** — run project-level commands inside the DinD container, or pass `--service` to open a shell or run a command inside a specific compose service container.
 - **`coast docker`** — inspect or manage the inner Docker daemon (container status, images, networks, compose operations).
 - **Coastguard Exec tab** — interactive debugging with persistent sessions, multiple tabs, and agent shell support. Best when you want to keep several terminals open while navigating the rest of the UI.
 - **`coast logs`** — for reading service output, use `coast logs` instead of `coast docker compose logs`. See [Logs](LOGS.md).

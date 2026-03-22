@@ -245,6 +245,8 @@ fn test_exec_request_roundtrip() {
     roundtrip_request(Request::Exec(ExecRequest {
         name: "feature-oauth".to_string(),
         project: "my-app".to_string(),
+        service: Some("web".to_string()),
+        root: true,
         command: vec!["bash".to_string()],
     }));
 }

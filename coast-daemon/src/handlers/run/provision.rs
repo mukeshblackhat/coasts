@@ -91,6 +91,7 @@ pub(super) async fn provision_instance(
         progress,
     };
 
+    normalize_inner_docker_socket_permissions(docker, &container_id).await;
     setup_shared_services(&ctx).await?;
     prepare_images(&ctx).await;
     prepare_runtime(&ctx).await?;
@@ -566,6 +567,38 @@ async fn normalize_shared_caddy_pki_permissions(docker: &bollard::Docker, contai
                 container_id,
                 error = %error,
                 "failed to exec shared Caddy PKI permission fixup"
+            );
+        }
+    }
+}
+
+async fn normalize_inner_docker_socket_permissions(docker: &bollard::Docker, container_id: &str) {
+    let runtime = coast_docker::dind::DindRuntime::with_client(docker.clone());
+    let cmd = [
+        "sh",
+        "-c",
+        "for _ in $(seq 1 20); do \
+           if [ -S /var/run/docker.sock ]; then chmod 666 /var/run/docker.sock && exit 0; fi; \
+           sleep 1; \
+         done; \
+         exit 1",
+    ];
+    match runtime.exec_in_coast(container_id, &cmd).await {
+        Ok(result) if result.success() => {
+            debug!(container_id, "normalized inner Docker socket permissions");
+        }
+        Ok(result) => {
+            warn!(
+                container_id,
+                stderr = %result.stderr,
+                "failed to normalize inner Docker socket permissions"
+            );
+        }
+        Err(error) => {
+            warn!(
+                container_id,
+                error = %error,
+                "failed to normalize inner Docker socket permissions"
             );
         }
     }

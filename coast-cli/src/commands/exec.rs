@@ -10,6 +10,7 @@ use std::io::IsTerminal;
 use anyhow::{bail, Result};
 use clap::Args;
 
+use coast_core::compose::{compose_context_for_build, shell_join, shell_quote};
 use coast_core::protocol::{ExecRequest, Request, Response};
 
 /// Arguments for `coast exec`.
@@ -17,6 +18,14 @@ use coast_core::protocol::{ExecRequest, Request, Response};
 pub struct ExecArgs {
     /// Name of the coast instance.
     pub name: String,
+
+    /// Exec into a specific compose service container instead of the coast container.
+    #[arg(long, value_name = "SERVICE")]
+    pub service: Option<String>,
+
+    /// Run as container root/default user instead of the host UID:GID mapping.
+    #[arg(long)]
+    pub root: bool,
 
     /// Command to run inside the coast container (default: sh).
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -58,6 +67,33 @@ fn build_interactive_docker_exec_args(
     args
 }
 
+fn build_service_exec_script(
+    project: &str,
+    build_id: Option<&str>,
+    service: &str,
+    command: &[String],
+    user_spec: Option<&str>,
+    interactive: bool,
+) -> String {
+    let ctx = compose_context_for_build(project, build_id);
+    let resolve_service = ctx.compose_script(&format!("ps -q {}", shell_quote(service)));
+    let user_flag = user_spec
+        .map(|user| format!(" -u {}", shell_quote(user)))
+        .unwrap_or_default();
+    let tty_flag = if interactive { " -it" } else { "" };
+    let inner_command = shell_join(command);
+    let error_message = shell_quote(&format!("Service '{service}' is not running"));
+    format!(
+        "cid=\"$({resolve_service} | head -n1)\"; \
+         if [ -z \"$cid\" ]; then echo {error_message} >&2; exit 1; fi; \
+         exec docker exec{user_flag}{tty_flag} \"$cid\" {inner_command}"
+    )
+}
+
+fn build_shell_command(script: &str) -> Vec<String> {
+    vec!["sh".to_string(), "-c".to_string(), script.to_string()]
+}
+
 /// Resolve the command to run, defaulting to sh.
 pub fn resolve_command(command: &[String]) -> Vec<String> {
     if command.is_empty() {
@@ -75,9 +111,23 @@ pub async fn execute(args: &ExecArgs, project: &str) -> Result<()> {
     // for full TTY passthrough without going through the daemon.
     if std::io::stdin().is_terminal() {
         let container = container_name(project, &args.name);
-        let user_spec = host_uid_gid();
-        let docker_args =
-            build_interactive_docker_exec_args(&container, &command, user_spec.as_deref());
+        let docker_args = if let Some(service) = &args.service {
+            let build_id = super::resolve_instance_build_id(project, &args.name);
+            let user_spec = if args.root { None } else { host_uid_gid() };
+            let script = build_service_exec_script(
+                project,
+                build_id.as_deref(),
+                service,
+                &command,
+                user_spec.as_deref(),
+                true,
+            );
+            let shell_command = build_shell_command(&script);
+            build_interactive_docker_exec_args(&container, &shell_command, None)
+        } else {
+            let user_spec = if args.root { None } else { host_uid_gid() };
+            build_interactive_docker_exec_args(&container, &command, user_spec.as_deref())
+        };
         let mut cmd = std::process::Command::new("docker");
         cmd.args(&docker_args);
         let status = cmd.status()?;
@@ -91,6 +141,8 @@ pub async fn execute(args: &ExecArgs, project: &str) -> Result<()> {
     let request = Request::Exec(ExecRequest {
         name: args.name.clone(),
         project: project.to_string(),
+        service: args.service.clone(),
+        root: args.root,
         command,
     });
 
@@ -135,6 +187,8 @@ mod tests {
     fn test_exec_args_name_only() {
         let cli = TestCli::try_parse_from(["test", "feature-oauth"]).unwrap();
         assert_eq!(cli.args.name, "feature-oauth");
+        assert!(cli.args.service.is_none());
+        assert!(!cli.args.root);
         assert!(cli.args.command.is_empty());
     }
 
@@ -143,6 +197,16 @@ mod tests {
         let cli = TestCli::try_parse_from(["test", "feature-oauth", "ls", "-la"]).unwrap();
         assert_eq!(cli.args.name, "feature-oauth");
         assert_eq!(cli.args.command, vec!["ls", "-la"]);
+    }
+
+    #[test]
+    fn test_exec_args_with_service_and_root() {
+        let cli =
+            TestCli::try_parse_from(["test", "feature-oauth", "--service", "web", "--root", "sh"])
+                .unwrap();
+        assert_eq!(cli.args.service.as_deref(), Some("web"));
+        assert!(cli.args.root);
+        assert_eq!(cli.args.command, vec!["sh"]);
     }
 
     #[test]
@@ -206,5 +270,21 @@ mod tests {
         let args =
             build_interactive_docker_exec_args("my-app-coasts-main", &["sh".to_string()], None);
         assert_eq!(args, vec!["exec", "-it", "my-app-coasts-main", "sh"]);
+    }
+
+    #[test]
+    fn test_build_service_exec_script_uses_compose_lookup_and_inner_exec() {
+        let script = build_service_exec_script(
+            "my-app",
+            None,
+            "web",
+            &["sh".to_string()],
+            Some("501:20"),
+            true,
+        );
+        assert!(script.contains("docker compose -p coast-my-app"));
+        assert!(script.contains("ps -q 'web'"));
+        assert!(script.contains("docker exec -u '501:20' -it"));
+        assert!(script.contains("'sh'"));
     }
 }

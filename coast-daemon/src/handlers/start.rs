@@ -158,6 +158,7 @@ pub async fn handle(
             match tokio::time::timeout(health_timeout, health_check).await {
                 Ok(Ok(r)) if r.success() => {
                     info!("start: inner daemon healthy");
+                    normalize_inner_docker_socket_permissions(docker, container_id).await;
                     emit(
                         &progress,
                         BuildProgressEvent::item("Waiting for inner daemon", "docker info", "ok"),
@@ -381,6 +382,36 @@ pub async fn handle(
         name: req.name,
         ports,
     })
+}
+
+async fn normalize_inner_docker_socket_permissions(docker: &bollard::Docker, container_id: &str) {
+    let runtime = coast_docker::dind::DindRuntime::with_client(docker.clone());
+    let cmd = [
+        "sh",
+        "-c",
+        "for _ in $(seq 1 20); do \
+           if [ -S /var/run/docker.sock ]; then chmod 666 /var/run/docker.sock && exit 0; fi; \
+           sleep 1; \
+         done; \
+         exit 1",
+    ];
+    match runtime.exec_in_coast(container_id, &cmd).await {
+        Ok(result) if result.success() => {}
+        Ok(result) => {
+            warn!(
+                container_id,
+                stderr = %result.stderr,
+                "failed to normalize inner Docker socket permissions"
+            );
+        }
+        Err(error) => {
+            warn!(
+                container_id,
+                error = %error,
+                "failed to normalize inner Docker socket permissions"
+            );
+        }
+    }
 }
 
 /// Compute the container mount source for `/workspace` during `coast start`.

@@ -261,6 +261,41 @@ pub struct ContainerCreateParams {
     pub extra_hosts: Vec<String>,
 }
 
+fn running_in_wsl_from(
+    wsl_distro_name: Option<&std::ffi::OsStr>,
+    wsl_interop: Option<&std::ffi::OsStr>,
+    proc_version: Option<&str>,
+) -> bool {
+    if wsl_distro_name.is_some() || wsl_interop.is_some() {
+        return true;
+    }
+
+    proc_version
+        .map(|value| value.to_ascii_lowercase().contains("microsoft"))
+        .unwrap_or(false)
+}
+
+fn running_in_wsl() -> bool {
+    let proc_version = std::fs::read_to_string("/proc/version").ok();
+    running_in_wsl_from(
+        std::env::var_os("WSL_DISTRO_NAME").as_deref(),
+        std::env::var_os("WSL_INTEROP").as_deref(),
+        proc_version.as_deref(),
+    )
+}
+
+fn published_host_ip_for(is_wsl: bool) -> &'static str {
+    if is_wsl {
+        "127.0.0.1"
+    } else {
+        "0.0.0.0"
+    }
+}
+
+fn published_host_ip() -> &'static str {
+    published_host_ip_for(running_in_wsl())
+}
+
 #[async_trait]
 impl Runtime for DindRuntime {
     fn name(&self) -> &str {
@@ -285,12 +320,13 @@ impl Runtime for DindRuntime {
         } else {
             let mut bindings: HashMap<String, Option<Vec<bollard::models::PortBinding>>> =
                 HashMap::new();
+            let host_ip = published_host_ip().to_string();
             for pp in &params.published_ports {
                 let key = format!("{}/tcp", pp.container_port);
                 bindings.insert(
                     key,
                     Some(vec![bollard::models::PortBinding {
-                        host_ip: Some("0.0.0.0".to_string()),
+                        host_ip: Some(host_ip.clone()),
                         host_port: Some(pp.host_port.to_string()),
                     }]),
                 );
@@ -1121,6 +1157,26 @@ mod tests {
         let config = ContainerConfig::new("my-app", "test", DIND_IMAGE);
         let params = DindRuntime::build_container_config(&config);
         assert!(params.published_ports.is_empty());
+    }
+
+    #[test]
+    fn test_published_host_ip_defaults_to_all_interfaces_outside_wsl() {
+        assert!(!running_in_wsl_from(
+            None,
+            None,
+            Some("Linux version 6.8.0-generic")
+        ));
+        assert_eq!(published_host_ip_for(false), "0.0.0.0");
+    }
+
+    #[test]
+    fn test_published_host_ip_uses_loopback_in_wsl() {
+        assert!(running_in_wsl_from(
+            Some(std::ffi::OsStr::new("Ubuntu")),
+            None,
+            Some("Linux version 6.8.0-generic"),
+        ));
+        assert_eq!(published_host_ip_for(true), "127.0.0.1");
     }
 
     #[test]

@@ -12,6 +12,7 @@ use std::io::IsTerminal;
 use anyhow::{bail, Result};
 use clap::Args;
 
+use coast_core::compose::{compose_context_for_build, shell_join};
 use coast_core::protocol::{ExecRequest, Request, Response};
 
 use super::exec::container_name;
@@ -21,6 +22,10 @@ use super::exec::container_name;
 pub struct DockerArgs {
     /// Name of the coast instance.
     pub name: String,
+
+    /// Run as container root/default user instead of the host UID:GID mapping.
+    #[arg(long)]
+    pub root: bool,
 
     /// Docker command and arguments to run (default: ps).
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -52,6 +57,30 @@ fn build_interactive_docker_exec_args(
     args.push(container.to_string());
     args.extend(command.iter().cloned());
     args
+}
+
+fn maybe_rewrite_compose_command(
+    project: &str,
+    build_id: Option<&str>,
+    command: &[String],
+) -> Vec<String> {
+    if command.first().map(String::as_str) != Some("docker")
+        || command.get(1).map(String::as_str) != Some("compose")
+    {
+        return command.to_vec();
+    }
+
+    let subcmd = if command.len() > 2 {
+        shell_join(&command[2..])
+    } else {
+        "ps".to_string()
+    };
+    let ctx = compose_context_for_build(project, build_id);
+    vec![
+        "sh".to_string(),
+        "-c".to_string(),
+        ctx.compose_script(&subcmd),
+    ]
 }
 
 /// Find the index of the container/service name in a `docker exec` command.
@@ -114,6 +143,8 @@ async fn resolve_service_name(instance: &str, project: &str, service: &str) -> O
     let request = Request::Exec(ExecRequest {
         name: instance.to_string(),
         project: project.to_string(),
+        service: None,
+        root: false,
         command,
     });
 
@@ -134,7 +165,10 @@ async fn resolve_service_name(instance: &str, project: &str, service: &str) -> O
 
 /// Execute the `coast docker` command.
 pub async fn execute(args: &DockerArgs, project: &str) -> Result<()> {
-    let mut command = resolve_docker_command(&args.command);
+    let resolved_command = resolve_docker_command(&args.command);
+    let build_id = super::resolve_instance_build_id(project, &args.name);
+    let mut command =
+        maybe_rewrite_compose_command(project, build_id.as_deref(), &resolved_command);
 
     // If this is a `docker exec` targeting a compose service name, resolve
     // it to the actual container name so the raw `docker exec` succeeds.
@@ -163,6 +197,8 @@ pub async fn execute(args: &DockerArgs, project: &str) -> Result<()> {
     let request = Request::Exec(ExecRequest {
         name: args.name.clone(),
         project: project.to_string(),
+        service: None,
+        root: args.root,
         command,
     });
 
@@ -207,6 +243,7 @@ mod tests {
     fn test_docker_args_name_only() {
         let cli = TestCli::try_parse_from(["test", "dev-1"]).unwrap();
         assert_eq!(cli.args.name, "dev-1");
+        assert!(!cli.args.root);
         assert!(cli.args.command.is_empty());
     }
 
@@ -214,6 +251,13 @@ mod tests {
     fn test_docker_args_with_simple_command() {
         let cli = TestCli::try_parse_from(["test", "dev-1", "ps"]).unwrap();
         assert_eq!(cli.args.name, "dev-1");
+        assert_eq!(cli.args.command, vec!["ps"]);
+    }
+
+    #[test]
+    fn test_docker_args_with_root_flag() {
+        let cli = TestCli::try_parse_from(["test", "dev-1", "--root", "ps"]).unwrap();
+        assert!(cli.args.root);
         assert_eq!(cli.args.command, vec!["ps"]);
     }
 
@@ -268,6 +312,31 @@ mod tests {
             "json".to_string(),
         ]);
         assert_eq!(cmd, vec!["docker", "compose", "ps", "--format", "json"]);
+    }
+
+    #[test]
+    fn test_maybe_rewrite_compose_command_wraps_with_sh() {
+        let cmd = maybe_rewrite_compose_command(
+            "my-app",
+            None,
+            &[
+                "docker".to_string(),
+                "compose".to_string(),
+                "ps".to_string(),
+            ],
+        );
+        assert_eq!(cmd[0], "sh");
+        assert_eq!(cmd[1], "-c");
+        assert!(cmd[2].contains("/coast-override/docker-compose.coast.yml"));
+        assert!(cmd[2].contains("docker compose -p coast-my-app"));
+        assert!(cmd[2].contains("ps"));
+    }
+
+    #[test]
+    fn test_maybe_rewrite_compose_command_leaves_raw_docker_alone() {
+        let original = vec!["docker".to_string(), "ps".to_string()];
+        let cmd = maybe_rewrite_compose_command("my-app", None, &original);
+        assert_eq!(cmd, original);
     }
 
     #[test]

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use tracing::{info, warn};
 
+use coast_core::artifact::coast_home;
 use coast_core::error::{CoastError, Result};
 use coast_core::protocol::{
     BuildSummary, BuildsContentResponse, BuildsDockerImagesResponse, BuildsImagesResponse,
@@ -48,8 +49,7 @@ pub async fn handle(req: BuildsRequest, state: &AppState) -> Result<BuildsRespon
 /// Resolve a build_id (or None/"latest") to an actual build directory path.
 /// Handles both new versioned layout and legacy flat layout.
 fn resolve_build_dir(project: &str, build_id: Option<&str>) -> Option<std::path::PathBuf> {
-    let home = dirs::home_dir()?;
-    let project_dir = home.join(".coast").join("images").join(project);
+    let project_dir = project_images_dir(project)?;
     if !project_dir.is_dir() {
         return None;
     }
@@ -90,10 +90,9 @@ fn read_manifest(project: &str, build_id: Option<&str>) -> Option<serde_json::Va
 /// List all build IDs for a project (newest first), handling both layouts.
 fn list_build_ids(project: &str) -> Vec<(String, String, bool)> {
     // Returns: Vec<(build_id, build_timestamp, is_latest)>
-    let Some(home) = dirs::home_dir() else {
+    let Some(project_dir) = project_images_dir(project) else {
         return Vec::new();
     };
-    let project_dir = home.join(".coast").join("images").join(project);
     if !project_dir.is_dir() {
         return Vec::new();
     }
@@ -172,13 +171,16 @@ fn list_build_ids(project: &str) -> Vec<(String, String, bool)> {
 
 /// Get the image cache directory path.
 fn image_cache_dir() -> Option<std::path::PathBuf> {
-    let home = dirs::home_dir()?;
-    let path = home.join(".coast").join("image-cache");
-    if path.is_dir() {
-        Some(path)
-    } else {
-        None
-    }
+    let path = coast_core::artifact::image_cache_dir().ok()?;
+    path.is_dir().then_some(path)
+}
+
+fn images_dir() -> Option<std::path::PathBuf> {
+    Some(coast_home().ok()?.join("images"))
+}
+
+fn project_images_dir(project: &str) -> Option<std::path::PathBuf> {
+    Some(images_dir()?.join(project))
 }
 
 /// Compute directory size recursively.
@@ -413,7 +415,7 @@ fn summary_from_manifest(
 /// List builds.
 async fn handle_ls(project: Option<&str>, state: &AppState) -> Result<BuildsResponse> {
     info!(project = ?project, "handling builds ls request");
-    let Some(home) = dirs::home_dir() else {
+    let Some(images_dir) = images_dir() else {
         return Ok(BuildsResponse::Ls(BuildsLsResponse { builds: Vec::new() }));
     };
 
@@ -465,7 +467,6 @@ async fn handle_ls(project: Option<&str>, state: &AppState) -> Result<BuildsResp
         }
     } else {
         // List latest build per project
-        let images_dir = home.join(".coast").join("images");
         let Ok(entries) = std::fs::read_dir(&images_dir) else {
             return Ok(BuildsResponse::Ls(BuildsLsResponse { builds }));
         };
@@ -879,6 +880,29 @@ mod tests {
     use super::*;
     use crate::state::StateDb;
 
+    struct EnvGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &std::path::Path) -> Self {
+            let previous = std::env::var(key).ok();
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(previous) = &self.previous {
+                std::env::set_var(self.key, previous);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
     fn test_state() -> AppState {
         AppState::new_for_testing(StateDb::open_in_memory().unwrap())
     }
@@ -991,7 +1015,8 @@ mod tests {
     #[test]
     fn test_list_build_ids_skips_dirs_without_manifest() {
         let tmp = tempfile::tempdir().unwrap();
-        let project_dir = tmp.path().join("project");
+        let _guard = EnvGuard::set("COAST_HOME", tmp.path());
+        let project_dir = tmp.path().join("images").join("project");
         std::fs::create_dir_all(&project_dir).unwrap();
 
         // Real build with manifest
@@ -1034,6 +1059,28 @@ mod tests {
         assert_eq!(builds, vec!["abc123"]);
         assert!(!builds.contains(&"inject".to_string()));
         assert!(!builds.contains(&"secrets".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_build_dir_uses_coast_home() {
+        let tmp = tempfile::tempdir().unwrap();
+        let _guard = EnvGuard::set("COAST_HOME", tmp.path());
+        let project_dir = tmp.path().join("images").join("overhead");
+        let build_id = "e1ab4f19565d7d26_20260321042523";
+        let build_dir = project_dir.join(build_id);
+        std::fs::create_dir_all(&build_dir).unwrap();
+        std::fs::write(
+            build_dir.join("manifest.json"),
+            r#"{"build_timestamp":"2026-03-21T04:25:23Z"}"#,
+        )
+        .unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(build_id, project_dir.join("latest")).unwrap();
+
+        let resolved = resolve_build_dir("overhead", Some("latest"));
+
+        assert_eq!(resolved, Some(project_dir.join("latest")));
+        assert_eq!(std::fs::canonicalize(resolved.unwrap()).unwrap(), build_dir);
     }
 
     #[test]

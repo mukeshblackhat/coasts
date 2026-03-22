@@ -558,6 +558,8 @@ mod tests {
             Request::Exec(ExecRequest {
                 project: String::new(),
                 name: String::new(),
+                service: None,
+                root: false,
                 command: vec![],
             }),
             Request::Logs(LogsRequest {

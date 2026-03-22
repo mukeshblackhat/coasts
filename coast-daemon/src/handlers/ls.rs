@@ -4,6 +4,7 @@
 /// by project name.
 use tracing::info;
 
+use coast_core::artifact::coast_home;
 use coast_core::error::Result;
 use coast_core::protocol::{InstanceSummary, KnownProject, LsRequest, LsResponse};
 use coast_core::types::InstanceStatus;
@@ -109,10 +110,10 @@ pub async fn handle(req: LsRequest, state: &AppState) -> Result<LsResponse> {
 
 /// Scan ~/.coast/images/ for built projects.
 fn scan_known_projects(archived_set: &std::collections::HashSet<String>) -> Vec<KnownProject> {
-    let Some(home) = dirs::home_dir() else {
+    let Ok(home) = coast_home() else {
         return Vec::new();
     };
-    let images_dir = home.join(".coast").join("images");
+    let images_dir = home.join("images");
     let Ok(entries) = std::fs::read_dir(&images_dir) else {
         return Vec::new();
     };
@@ -215,9 +216,8 @@ fn resolve_primary_port(
 
 /// Resolve the project root directory from manifest.json.
 fn resolve_project_root(project: &str) -> Option<String> {
-    let home = dirs::home_dir()?;
+    let home = coast_home().ok()?;
     let manifest_path = home
-        .join(".coast")
         .join("images")
         .join(project)
         .join("latest")

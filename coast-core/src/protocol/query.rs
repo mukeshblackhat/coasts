@@ -121,7 +121,13 @@ pub struct ExecRequest {
     pub name: String,
     /// Project name.
     pub project: String,
-    /// Command to run (default: ["bash"]).
+    /// Optional compose service name to target instead of the coast container.
+    #[serde(default)]
+    pub service: Option<String>,
+    /// When true, bypass host UID:GID mapping and run as container root/default.
+    #[serde(default)]
+    pub root: bool,
+    /// Command to run (default: ["sh"]).
     pub command: Vec<String>,
 }
 
