@@ -419,6 +419,8 @@ fn test_protocol_roundtrip_all_request_variants() {
         Request::Exec(ExecRequest {
             name: "feature-oauth".to_string(),
             project: "my-app".to_string(),
+            service: None,
+            root: false,
             command: vec![
                 "bash".to_string(),
                 "-c".to_string(),

@@ -4,6 +4,7 @@
 /// Docker resources: stopped containers, volumes, and images.
 use tracing::{info, warn};
 
+use coast_core::artifact::coast_home;
 use coast_core::error::{CoastError, Result};
 use coast_core::protocol::{BuildProgressEvent, CoastEvent, RmBuildRequest, RmBuildResponse};
 
@@ -215,13 +216,9 @@ async fn handle_remove_specific_builds(
         BuildProgressEvent::started("Validating builds", 1, total),
     );
 
-    let Some(home) = dirs::home_dir() else {
-        return Err(CoastError::io(
-            "Could not determine home directory",
-            "rm-build",
-        ));
-    };
-    let project_dir = home.join(".coast").join("images").join(project);
+    let project_dir = coast_home()
+        .map(|home| home.join("images").join(project))
+        .map_err(|_| CoastError::io("Could not determine Coast home directory", "rm-build"))?;
 
     let latest_target = std::fs::read_link(project_dir.join("latest"))
         .ok()
@@ -477,10 +474,10 @@ async fn remove_project_images(docker: &bollard::Docker, project: &str) -> usize
 
 /// Remove the build artifact directory at ~/.coast/images/{project}/.
 fn remove_artifact_dir(project: &str) -> bool {
-    let Some(home) = dirs::home_dir() else {
+    let Ok(home) = coast_home() else {
         return false;
     };
-    let artifact_dir = home.join(".coast").join("images").join(project);
+    let artifact_dir = home.join("images").join(project);
     if !artifact_dir.exists() {
         return false;
     }
