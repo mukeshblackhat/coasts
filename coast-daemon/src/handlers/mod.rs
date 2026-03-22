@@ -18,8 +18,10 @@ use crate::server::AppState;
 /// Build artifacts are stored at `~/.coast/images/{project}/{build_id}/coastfile.toml`.
 /// When no `build_id` is provided, falls back to the `latest` symlink.
 pub fn artifact_coastfile_path(project: &str, build_id: Option<&str>) -> std::path::PathBuf {
-    let home = dirs::home_dir().unwrap_or_default();
-    let mut base = home.join(".coast").join("images").join(project);
+    let mut base = coast_core::artifact::coast_home()
+        .unwrap_or_else(|_| dirs::home_dir().unwrap_or_default().join(".coast"))
+        .join("images")
+        .join(project);
     if let Some(build_id) = build_id {
         base = base.join(build_id);
     } else {
@@ -101,7 +103,9 @@ mod compose_context_tests {
 
     #[test]
     fn test_clear_checked_out_state_clears_pids_and_updates_status() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         unsafe {
             std::env::remove_var("WSL_DISTRO_NAME");
             std::env::remove_var("WSL_INTEROP");
@@ -174,7 +178,9 @@ mod compose_context_tests {
 
     #[test]
     fn test_clear_checked_out_state_succeeds_with_stale_zombie_pid() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         unsafe {
             std::env::remove_var("WSL_DISTRO_NAME");
             std::env::remove_var("WSL_INTEROP");
@@ -220,7 +226,9 @@ mod compose_context_tests {
 
     #[test]
     fn test_clear_checked_out_state_keeps_checked_out_when_wsl_bridge_removal_fails() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let db = crate::state::StateDb::open_in_memory().unwrap();
         let instance = coast_core::types::CoastInstance {
             name: "dev-1".to_string(),

@@ -339,6 +339,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_stop_checked_out_instance() {
+        unsafe {
+            std::env::remove_var("WSL_DISTRO_NAME");
+            std::env::remove_var("WSL_INTEROP");
+        }
         let state = test_state();
         {
             let db = state.db.lock().await;

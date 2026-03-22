@@ -435,12 +435,6 @@ fn compute_start_mount_src(
         .as_ref()
         .and_then(|root| super::assign::detect_worktree_dir_from_git(root));
 
-    if let Some(ref d) = detected {
-        if !Coastfile::is_external_worktree_dir(d) {
-            return format!("/host-project/{d}/{wt}");
-        }
-    }
-
     let worktree_dirs = coastfile
         .map(|cf| cf.worktree_dirs.clone())
         .unwrap_or_else(|| vec![".worktrees".to_string()]);
@@ -448,6 +442,20 @@ fn compute_start_mount_src(
         .map(|cf| cf.default_worktree_dir.clone())
         .unwrap_or_else(|| ".worktrees".to_string());
 
+    // Phase 1: Directory name match in local worktree dirs (handles branch != dir name).
+    if let Some(ref root) = project_root {
+        for dir in &worktree_dirs {
+            if Coastfile::is_external_worktree_dir(dir) {
+                continue;
+            }
+            let candidate = root.join(dir).join(wt);
+            if candidate.exists() {
+                return format!("/host-project/{dir}/{wt}");
+            }
+        }
+    }
+
+    // Phase 2: External worktree dirs (directory + branch match).
     if let Some(ref root) = project_root {
         for (idx, dir) in worktree_dirs.iter().enumerate() {
             if Coastfile::is_external_worktree_dir(dir) {
@@ -455,10 +463,17 @@ fn compute_start_mount_src(
                 if let Some(mount) = find_external_wt_mount_src(root, &resolved, idx, wt) {
                     return mount;
                 }
-            } else {
-                let candidate = root.join(dir).join(wt);
+            }
+        }
+    }
+
+    // Phase 3: Git-detected worktree dir (creation fallback).
+    if let Some(ref d) = detected {
+        if !Coastfile::is_external_worktree_dir(d) {
+            if let Some(ref root) = project_root {
+                let candidate = root.join(d).join(wt);
                 if candidate.exists() {
-                    return format!("/host-project/{dir}/{wt}");
+                    return format!("/host-project/{d}/{wt}");
                 }
             }
         }

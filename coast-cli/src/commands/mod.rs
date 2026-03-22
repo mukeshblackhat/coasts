@@ -888,9 +888,12 @@ mod tests {
 
     #[test]
     fn test_socket_path() {
-        with_temp_coast_home(|coast_home| {
+        with_temp_coast_home(|_| {
             let path = socket_path();
-            assert_eq!(path, coast_home.join("coastd.sock"));
+            let expected = coast_core::artifact::coast_home()
+                .expect("coast_home")
+                .join("coastd.sock");
+            assert_eq!(path, expected);
         });
     }
 

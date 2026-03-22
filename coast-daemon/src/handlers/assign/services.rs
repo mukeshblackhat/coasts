@@ -504,7 +504,9 @@ fn try_match_external_worktree(
 ) -> Option<WorktreeLocation> {
     use coast_core::coastfile::Coastfile;
 
-    let wt_canonical = wt_path.canonicalize().unwrap_or_else(|_| wt_path.to_path_buf());
+    let wt_canonical = wt_path
+        .canonicalize()
+        .unwrap_or_else(|_| wt_path.to_path_buf());
 
     let branch_name = if let Some(branch_ref) = line.strip_prefix("branch ") {
         branch_ref.strip_prefix("refs/heads/").unwrap_or(branch_ref)
@@ -1971,7 +1973,10 @@ mod tests {
         let loc = loc.unwrap();
         assert_eq!(loc.wt_dir, ".claude/worktrees");
         assert!(loc.host_path.ends_with(".claude/worktrees/foo"));
-        assert_eq!(loc.container_mount_src, "/host-project/.claude/worktrees/foo");
+        assert_eq!(
+            loc.container_mount_src,
+            "/host-project/.claude/worktrees/foo"
+        );
     }
 
     #[test]
@@ -1998,7 +2003,10 @@ mod tests {
         let dirs = vec![".claude/worktrees".to_string()];
         // Branch name "worktree-foo" should NOT match via directory name lookup.
         let loc = find_worktree_in_local_dirs(root, &dirs, "worktree-foo");
-        assert!(loc.is_none(), "branch name should not match in directory-name lookup");
+        assert!(
+            loc.is_none(),
+            "branch name should not match in directory-name lookup"
+        );
     }
 
     #[tokio::test]
@@ -2055,7 +2063,10 @@ mod tests {
         // Only external dirs configured — should not find via local branch scan.
         let dirs = vec!["~/external/worktrees".to_string()];
         let loc = find_worktree_by_branch_in_local_dirs(root, &dirs, "feat-a").await;
-        assert!(loc.is_none(), "should not match worktrees in external-only config");
+        assert!(
+            loc.is_none(),
+            "should not match worktrees in external-only config"
+        );
     }
 
     #[test]
@@ -2098,10 +2109,7 @@ mod tests {
         let wt = ext_path.join("some-dir");
         std::fs::create_dir_all(&wt).unwrap();
 
-        let porcelain = format!(
-            "worktree {}\nbranch refs/heads/my-branch\n\n",
-            wt.display(),
-        );
+        let porcelain = format!("worktree {}\nbranch refs/heads/my-branch\n\n", wt.display(),);
 
         let external_dirs = vec![(0_usize, "~/ext".to_string(), ext_path)];
 
@@ -2112,7 +2120,8 @@ mod tests {
 
     #[test]
     fn test_parse_porcelain_entries() {
-        let porcelain = "/root\nbranch refs/heads/main\n\n/root/.worktrees/feat\nbranch refs/heads/feat\n\n";
+        let porcelain =
+            "/root\nbranch refs/heads/main\n\n/root/.worktrees/feat\nbranch refs/heads/feat\n\n";
         // Prefix "worktree " is required.
         let porcelain = "worktree /root\nbranch refs/heads/main\n\nworktree /root/.worktrees/feat\nbranch refs/heads/feat\n\n";
         let entries = parse_porcelain_entries(porcelain);
@@ -2128,8 +2137,7 @@ mod tests {
 
     #[test]
     fn test_parse_porcelain_entries_detached() {
-        let porcelain =
-            "worktree /root/.worktrees/abc\ndetached\n\n";
+        let porcelain = "worktree /root/.worktrees/abc\ndetached\n\n";
         let entries = parse_porcelain_entries(porcelain);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].branch_line, "detached");
