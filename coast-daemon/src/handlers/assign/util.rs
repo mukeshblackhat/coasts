@@ -22,11 +22,14 @@ pub(super) struct CoastfileData {
     pub has_compose: bool,
 }
 
-pub(super) fn load_coastfile_data(project: &str) -> CoastfileData {
-    let home = dirs::home_dir().unwrap_or_default();
-    let coastfile_path = home
-        .join(".coast")
+fn coast_images_dir() -> std::path::PathBuf {
+    coast_core::artifact::coast_home()
+        .unwrap_or_else(|_| dirs::home_dir().unwrap_or_default().join(".coast"))
         .join("images")
+}
+
+pub(super) fn load_coastfile_data(project: &str) -> CoastfileData {
+    let coastfile_path = coast_images_dir()
         .join(project)
         .join("latest")
         .join("coastfile.toml");
@@ -49,10 +52,7 @@ pub(super) fn load_coastfile_data(project: &str) -> CoastfileData {
 }
 
 pub fn has_compose(project: &str) -> bool {
-    let home = dirs::home_dir().unwrap_or_default();
-    let coastfile_path = home
-        .join(".coast")
-        .join("images")
+    let coastfile_path = coast_images_dir()
         .join(project)
         .join("latest")
         .join("coastfile.toml");
@@ -65,8 +65,7 @@ pub fn has_compose(project: &str) -> bool {
 }
 
 pub fn read_project_root(project: &str) -> Option<std::path::PathBuf> {
-    let home = dirs::home_dir()?;
-    let project_dir = home.join(".coast").join("images").join(project);
+    let project_dir = coast_images_dir().join(project);
     let manifest_path = project_dir.join("latest").join("manifest.json");
     let content = std::fs::read_to_string(manifest_path).ok()?;
     let manifest: serde_json::Value = serde_json::from_str(&content).ok()?;
@@ -100,23 +99,11 @@ pub(super) async fn revert_assign_status(
 }
 
 pub(super) fn check_has_bare_install(project: &str, build_id: Option<&str>) -> bool {
-    let home = dirs::home_dir().unwrap_or_default();
+    let images = coast_images_dir();
     let cf_path = build_id
-        .map(|bid| {
-            home.join(".coast")
-                .join("images")
-                .join(project)
-                .join(bid)
-                .join("coastfile.toml")
-        })
+        .map(|bid| images.join(project).join(bid).join("coastfile.toml"))
         .filter(|p| p.exists())
-        .unwrap_or_else(|| {
-            home.join(".coast")
-                .join("images")
-                .join(project)
-                .join("latest")
-                .join("coastfile.toml")
-        });
+        .unwrap_or_else(|| images.join(project).join("latest").join("coastfile.toml"));
     coast_core::coastfile::Coastfile::from_file(&cf_path)
         .map(|cf| cf.services.iter().any(|s| !s.install.is_empty()))
         .unwrap_or(false)

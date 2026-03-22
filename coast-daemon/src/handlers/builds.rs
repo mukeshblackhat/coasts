@@ -880,16 +880,31 @@ mod tests {
     use super::*;
     use crate::state::StateDb;
 
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
     struct EnvGuard {
         key: &'static str,
         previous: Option<String>,
+        _lock: MutexGuard<'static, ()>,
     }
 
     impl EnvGuard {
         fn set(key: &'static str, value: &std::path::Path) -> Self {
+            let _lock = env_lock()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             let previous = std::env::var(key).ok();
             std::env::set_var(key, value);
-            Self { key, previous }
+            Self {
+                key,
+                previous,
+                _lock,
+            }
         }
     }
 
@@ -1080,7 +1095,10 @@ mod tests {
         let resolved = resolve_build_dir("overhead", Some("latest"));
 
         assert_eq!(resolved, Some(project_dir.join("latest")));
-        assert_eq!(std::fs::canonicalize(resolved.unwrap()).unwrap(), build_dir);
+        assert_eq!(
+            std::fs::canonicalize(resolved.unwrap()).unwrap(),
+            std::fs::canonicalize(&build_dir).unwrap()
+        );
     }
 
     #[test]

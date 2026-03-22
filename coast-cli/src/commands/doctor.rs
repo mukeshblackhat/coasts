@@ -801,7 +801,9 @@ mod tests {
 
     #[test]
     fn test_active_state_db_path_uses_coast_home_env() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let prev = std::env::var_os("COAST_HOME");
         unsafe {
             std::env::set_var("COAST_HOME", "/tmp/coast-dev-test-home");
