@@ -83,7 +83,6 @@ fn process_looks_stale(pid: u32) -> bool {
     }
 }
 
-#[allow(clippy::cognitive_complexity, clippy::too_many_lines)]
 pub async fn execute(args: &DoctorArgs) -> Result<()> {
     let coast_home = active_coast_home()?;
     let db_path = active_state_db_path()?;
@@ -105,188 +104,19 @@ pub async fn execute(args: &DoctorArgs) -> Result<()> {
     let mut fixes: Vec<String> = Vec::new();
     let mut findings: Vec<String> = Vec::new();
 
-    // Check instances
-    {
-        let mut stmt = db.prepare("SELECT name, project, status, container_id FROM instances")?;
-
-        let rows: Vec<(String, String, String, Option<String>)> = stmt
-            .query_map([], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-            })?
-            .filter_map(Result::ok)
-            .collect();
-
-        for (name, project, status, container_id) in &rows {
-            if let Some(cid) = container_id {
-                let exists = docker.inspect_container(cid, None).await.is_ok();
-
-                if !exists {
-                    let label = format!("{project}/{name}");
-                    if args.dry_run {
-                        findings.push(format!(
-                            "Instance {label} has missing container ({}) with status {status}",
-                            &cid[..12.min(cid.len())]
-                        ));
-                        println!(
-                            "  {} Instance {} has missing container ({}), status: {}",
-                            "!!".yellow().bold(),
-                            label.bold(),
-                            &cid[..12.min(cid.len())],
-                            status,
-                        );
-                    } else {
-                        clear_instance_socat_pids(&db, project, name, &mut fixes, kill_socat_pid)?;
-                        db.execute(
-                            "DELETE FROM port_allocations WHERE project = ?1 AND instance_name = ?2",
-                            rusqlite::params![project, name],
-                        )?;
-                        db.execute(
-                            "DELETE FROM instances WHERE project = ?1 AND name = ?2",
-                            rusqlite::params![project, name],
-                        )?;
-                        fixes.push(format!("Removed orphaned instance {}", label));
-                    }
-                }
-            } else if status != "stopped" {
-                let label = format!("{project}/{name}");
-                if args.dry_run {
-                    findings.push(format!(
-                        "Instance {label} has no container ID but status is '{status}'"
-                    ));
-                    println!(
-                        "  {} Instance {} has no container ID but status is '{}'",
-                        "!!".yellow().bold(),
-                        label.bold(),
-                        status,
-                    );
-                } else {
-                    clear_instance_socat_pids(&db, project, name, &mut fixes, kill_socat_pid)?;
-                    db.execute(
-                        "DELETE FROM port_allocations WHERE project = ?1 AND instance_name = ?2",
-                        rusqlite::params![project, name],
-                    )?;
-                    db.execute(
-                        "DELETE FROM instances WHERE project = ?1 AND name = ?2",
-                        rusqlite::params![project, name],
-                    )?;
-                    fixes.push(format!("Removed orphaned instance {}", label));
-                }
-            }
-        }
-    }
-
+    repair_orphaned_instances(
+        &db,
+        &docker,
+        args.dry_run,
+        &mut fixes,
+        &mut findings,
+        kill_socat_pid,
+    )
+    .await?;
     repair_stale_checkout_rows(&db, args.dry_run, &mut fixes, &mut findings, kill_socat_pid)?;
     repair_checked_out_instances_without_ports(&db, args.dry_run, &mut fixes, &mut findings)?;
-
-    // Check shared services
-    {
-        let mut stmt =
-            db.prepare("SELECT project, service_name, container_id, status FROM shared_services")?;
-
-        let rows: Vec<(String, String, Option<String>, String)> = stmt
-            .query_map([], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-            })?
-            .filter_map(Result::ok)
-            .collect();
-
-        for (project, service_name, container_id, status) in &rows {
-            if status == "running" {
-                let exists = if let Some(cid) = container_id {
-                    docker.inspect_container(cid, None).await.is_ok()
-                } else {
-                    false
-                };
-
-                if !exists {
-                    let label = format!("{project}/{service_name}");
-                    if args.dry_run {
-                        findings.push(format!(
-                            "Shared service {label} marked running but container is gone"
-                        ));
-                        println!(
-                            "  {} Shared service {} marked running but container is gone",
-                            "!!".yellow().bold(),
-                            label.bold(),
-                        );
-                    } else {
-                        db.execute(
-                            "UPDATE shared_services SET status = 'stopped', container_id = NULL WHERE project = ?1 AND service_name = ?2",
-                            rusqlite::params![project, service_name],
-                        )?;
-                        fixes.push(format!("Marked shared service {} as stopped", label));
-                    }
-                }
-            }
-        }
-    }
-
-    // Check for dangling containers (exist in Docker but not in state DB)
-    {
-        use bollard::container::ListContainersOptions;
-        use std::collections::HashMap;
-
-        let mut filters = HashMap::new();
-        filters.insert("label".to_string(), vec!["coast.managed=true".to_string()]);
-        let opts = ListContainersOptions {
-            all: true,
-            filters,
-            ..Default::default()
-        };
-
-        if let Ok(containers) = docker.list_containers(Some(opts)).await {
-            for container in &containers {
-                let labels = container.labels.as_ref();
-                let project = labels.and_then(|l| l.get("coast.project")).cloned();
-                let instance = labels.and_then(|l| l.get("coast.instance")).cloned();
-
-                if let (Some(proj), Some(inst)) = (project, instance) {
-                    let exists: bool = db
-                        .prepare("SELECT 1 FROM instances WHERE project = ?1 AND name = ?2")
-                        .and_then(|mut s| s.exists(rusqlite::params![&proj, &inst]))
-                        .unwrap_or(false);
-
-                    if !exists {
-                        let container_name = container
-                            .names
-                            .as_ref()
-                            .and_then(|n| n.first())
-                            .map(|n| n.trim_start_matches('/').to_string())
-                            .unwrap_or_else(|| container.id.clone().unwrap_or_default());
-                        let label = format!("{proj}/{inst}");
-
-                        if args.dry_run {
-                            findings.push(format!(
-                                "Dangling container '{container_name}' for {label} has no state DB record"
-                            ));
-                            println!(
-                                "  {} Dangling container '{}' for {} has no state DB record",
-                                "!!".yellow().bold(),
-                                container_name.bold(),
-                                label.bold(),
-                            );
-                        } else {
-                            if let Some(ref cid) = container.id {
-                                let rm_opts = bollard::container::RemoveContainerOptions {
-                                    force: true,
-                                    v: true,
-                                    ..Default::default()
-                                };
-                                let _ = docker.remove_container(cid, Some(rm_opts)).await;
-                                let cache_vol = format!("coast-dind--{proj}--{inst}");
-                                let _ = docker.remove_volume(&cache_vol, None).await;
-                            }
-                            fixes.push(format!(
-                                "Removed dangling container '{}' for {}",
-                                container_name, label,
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
+    repair_orphaned_shared_services(&db, &docker, args.dry_run, &mut fixes, &mut findings).await?;
+    repair_dangling_containers(&db, &docker, args.dry_run, &mut fixes, &mut findings).await?;
     handle_stale_docker_port_bindings(args, &docker, &mut fixes, &mut findings).await;
 
     // Report
@@ -325,6 +155,219 @@ pub async fn execute(args: &DoctorArgs) -> Result<()> {
                 findings.len(),
                 if findings.len() == 1 { "" } else { "s" },
             );
+        }
+    }
+
+    Ok(())
+}
+
+/// Check instances in the state DB and remove any whose Docker container no
+/// longer exists.
+async fn repair_orphaned_instances(
+    db: &rusqlite::Connection,
+    docker: &bollard::Docker,
+    dry_run: bool,
+    fixes: &mut Vec<String>,
+    findings: &mut Vec<String>,
+    killer: impl Fn(u32) -> Result<()>,
+) -> Result<()> {
+    let mut stmt = db.prepare("SELECT name, project, status, container_id FROM instances")?;
+
+    let rows: Vec<(String, String, String, Option<String>)> = stmt
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?
+        .filter_map(Result::ok)
+        .collect();
+
+    for (name, project, status, container_id) in &rows {
+        if let Some(cid) = container_id {
+            let exists = docker.inspect_container(cid, None).await.is_ok();
+
+            if !exists {
+                let label = format!("{project}/{name}");
+                if dry_run {
+                    findings.push(format!(
+                        "Instance {label} has missing container ({}) with status {status}",
+                        &cid[..12.min(cid.len())]
+                    ));
+                    println!(
+                        "  {} Instance {} has missing container ({}), status: {}",
+                        "!!".yellow().bold(),
+                        label.bold(),
+                        &cid[..12.min(cid.len())],
+                        status,
+                    );
+                } else {
+                    clear_instance_socat_pids(db, project, name, fixes, &killer)?;
+                    db.execute(
+                        "DELETE FROM port_allocations WHERE project = ?1 AND instance_name = ?2",
+                        rusqlite::params![project, name],
+                    )?;
+                    db.execute(
+                        "DELETE FROM instances WHERE project = ?1 AND name = ?2",
+                        rusqlite::params![project, name],
+                    )?;
+                    fixes.push(format!("Removed orphaned instance {}", label));
+                }
+            }
+        } else if status != "stopped" {
+            let label = format!("{project}/{name}");
+            if dry_run {
+                findings.push(format!(
+                    "Instance {label} has no container ID but status is '{status}'"
+                ));
+                println!(
+                    "  {} Instance {} has no container ID but status is '{}'",
+                    "!!".yellow().bold(),
+                    label.bold(),
+                    status,
+                );
+            } else {
+                clear_instance_socat_pids(db, project, name, fixes, &killer)?;
+                db.execute(
+                    "DELETE FROM port_allocations WHERE project = ?1 AND instance_name = ?2",
+                    rusqlite::params![project, name],
+                )?;
+                db.execute(
+                    "DELETE FROM instances WHERE project = ?1 AND name = ?2",
+                    rusqlite::params![project, name],
+                )?;
+                fixes.push(format!("Removed orphaned instance {}", label));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Check shared services marked as running and mark them stopped if their
+/// Docker container no longer exists.
+async fn repair_orphaned_shared_services(
+    db: &rusqlite::Connection,
+    docker: &bollard::Docker,
+    dry_run: bool,
+    fixes: &mut Vec<String>,
+    findings: &mut Vec<String>,
+) -> Result<()> {
+    let mut stmt =
+        db.prepare("SELECT project, service_name, container_id, status FROM shared_services")?;
+
+    let rows: Vec<(String, String, Option<String>, String)> = stmt
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?
+        .filter_map(Result::ok)
+        .collect();
+
+    for (project, service_name, container_id, status) in &rows {
+        if status == "running" {
+            let exists = if let Some(cid) = container_id {
+                docker.inspect_container(cid, None).await.is_ok()
+            } else {
+                false
+            };
+
+            if !exists {
+                let label = format!("{project}/{service_name}");
+                if dry_run {
+                    findings.push(format!(
+                        "Shared service {label} marked running but container is gone"
+                    ));
+                    println!(
+                        "  {} Shared service {} marked running but container is gone",
+                        "!!".yellow().bold(),
+                        label.bold(),
+                    );
+                } else {
+                    db.execute(
+                        "UPDATE shared_services SET status = 'stopped', container_id = NULL WHERE project = ?1 AND service_name = ?2",
+                        rusqlite::params![project, service_name],
+                    )?;
+                    fixes.push(format!("Marked shared service {} as stopped", label));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Find Docker containers labelled `coast.managed=true` that have no matching
+/// state DB record and force-remove them.
+async fn repair_dangling_containers(
+    db: &rusqlite::Connection,
+    docker: &bollard::Docker,
+    dry_run: bool,
+    fixes: &mut Vec<String>,
+    findings: &mut Vec<String>,
+) -> Result<()> {
+    use bollard::container::ListContainersOptions;
+    use std::collections::HashMap;
+
+    let mut filters = HashMap::new();
+    filters.insert("label".to_string(), vec!["coast.managed=true".to_string()]);
+    let opts = ListContainersOptions {
+        all: true,
+        filters,
+        ..Default::default()
+    };
+
+    let Ok(containers) = docker.list_containers(Some(opts)).await else {
+        return Ok(());
+    };
+
+    for container in &containers {
+        let labels = container.labels.as_ref();
+        let project = labels.and_then(|l| l.get("coast.project")).cloned();
+        let instance = labels.and_then(|l| l.get("coast.instance")).cloned();
+
+        let (Some(proj), Some(inst)) = (project, instance) else {
+            continue;
+        };
+
+        let exists: bool = db
+            .prepare("SELECT 1 FROM instances WHERE project = ?1 AND name = ?2")
+            .and_then(|mut s| s.exists(rusqlite::params![&proj, &inst]))
+            .unwrap_or(false);
+
+        if exists {
+            continue;
+        }
+
+        let container_name = container
+            .names
+            .as_ref()
+            .and_then(|n| n.first())
+            .map(|n| n.trim_start_matches('/').to_string())
+            .unwrap_or_else(|| container.id.clone().unwrap_or_default());
+        let label = format!("{proj}/{inst}");
+
+        if dry_run {
+            findings.push(format!(
+                "Dangling container '{container_name}' for {label} has no state DB record"
+            ));
+            println!(
+                "  {} Dangling container '{}' for {} has no state DB record",
+                "!!".yellow().bold(),
+                container_name.bold(),
+                label.bold(),
+            );
+        } else {
+            if let Some(ref cid) = container.id {
+                let rm_opts = bollard::container::RemoveContainerOptions {
+                    force: true,
+                    v: true,
+                    ..Default::default()
+                };
+                let _ = docker.remove_container(cid, Some(rm_opts)).await;
+                let cache_vol = format!("coast-dind--{proj}--{inst}");
+                let _ = docker.remove_volume(&cache_vol, None).await;
+            }
+            fixes.push(format!(
+                "Removed dangling container '{}' for {}",
+                container_name, label,
+            ));
         }
     }
 
@@ -808,6 +851,13 @@ mod tests {
                 socat_pid INTEGER,
                 PRIMARY KEY (project, instance_name, logical_name)
             );
+            CREATE TABLE shared_services (
+                project TEXT NOT NULL,
+                service_name TEXT NOT NULL,
+                container_id TEXT,
+                status TEXT NOT NULL,
+                PRIMARY KEY (project, service_name)
+            );
             ",
         )
         .unwrap();
@@ -1153,5 +1203,105 @@ mod tests {
             )
             .unwrap();
         assert!(pid.is_none());
+    }
+
+    // --- repair_orphaned_shared_services tests ---
+    //
+    // These test the DB query/mutation logic using a mock Docker client that
+    // always reports containers as missing (connection refused). This exercises
+    // the "container is gone" code path without needing a real Docker daemon.
+
+    fn mock_docker() -> bollard::Docker {
+        bollard::Docker::connect_with_http("http://127.0.0.1:0", 1, bollard::API_DEFAULT_VERSION)
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_repair_orphaned_shared_services_marks_running_as_stopped() {
+        let db = setup_test_db();
+        db.execute(
+            "INSERT INTO shared_services (project, service_name, container_id, status) VALUES ('proj', 'postgres', 'abc123', 'running')",
+            [],
+        )
+        .unwrap();
+
+        let docker = mock_docker();
+        let mut fixes = Vec::new();
+        let mut findings = Vec::new();
+        repair_orphaned_shared_services(&db, &docker, false, &mut fixes, &mut findings)
+            .await
+            .unwrap();
+
+        let status: String = db
+            .query_row(
+                "SELECT status FROM shared_services WHERE project = 'proj' AND service_name = 'postgres'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "stopped");
+
+        let cid: Option<String> = db
+            .query_row(
+                "SELECT container_id FROM shared_services WHERE project = 'proj' AND service_name = 'postgres'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(cid.is_none());
+
+        assert_eq!(fixes.len(), 1);
+        assert!(fixes[0].contains("postgres"));
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_repair_orphaned_shared_services_dry_run_only_reports() {
+        let db = setup_test_db();
+        db.execute(
+            "INSERT INTO shared_services (project, service_name, container_id, status) VALUES ('proj', 'redis', 'def456', 'running')",
+            [],
+        )
+        .unwrap();
+
+        let docker = mock_docker();
+        let mut fixes = Vec::new();
+        let mut findings = Vec::new();
+        repair_orphaned_shared_services(&db, &docker, true, &mut fixes, &mut findings)
+            .await
+            .unwrap();
+
+        let status: String = db
+            .query_row(
+                "SELECT status FROM shared_services WHERE project = 'proj' AND service_name = 'redis'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "running");
+
+        assert!(fixes.is_empty());
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].contains("redis"));
+    }
+
+    #[tokio::test]
+    async fn test_repair_orphaned_shared_services_skips_stopped_services() {
+        let db = setup_test_db();
+        db.execute(
+            "INSERT INTO shared_services (project, service_name, container_id, status) VALUES ('proj', 'postgres', NULL, 'stopped')",
+            [],
+        )
+        .unwrap();
+
+        let docker = mock_docker();
+        let mut fixes = Vec::new();
+        let mut findings = Vec::new();
+        repair_orphaned_shared_services(&db, &docker, false, &mut fixes, &mut findings)
+            .await
+            .unwrap();
+
+        assert!(fixes.is_empty());
+        assert!(findings.is_empty());
     }
 }
