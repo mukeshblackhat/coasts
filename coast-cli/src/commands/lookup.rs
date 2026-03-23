@@ -127,10 +127,6 @@ pub async fn execute(args: &LookupArgs, project: &str) -> Result<()> {
                 let _ = wt_display; // used in header above
             }
 
-            if resp.instances.is_empty() {
-                std::process::exit(1);
-            }
-
             Ok(())
         }
         Response::Error(e) => {
