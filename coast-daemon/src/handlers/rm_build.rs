@@ -377,14 +377,53 @@ async fn remove_project_containers(docker: &bollard::Docker, project: &str) -> u
     count
 }
 
+/// Check whether a Docker volume belongs to the given project.
+///
+/// Three rules:
+/// - **Shared volumes:** name starts with `coast-shared--{project}--`
+/// - **Compose volumes:** name contains `{project}-coasts` or `{project}-shared-services`
+/// - **Isolated volumes:** name starts with `coast--` AND the `coast.project` label matches
+fn volume_belongs_to_project(
+    name: &str,
+    project: &str,
+    labels: &std::collections::HashMap<String, String>,
+) -> bool {
+    let shared_prefix = format!("coast-shared--{project}--");
+    let compose_prefix = format!("{project}-coasts");
+    let shared_svc_prefix = format!("{project}-shared-services");
+
+    if name.starts_with(&shared_prefix)
+        || name.contains(&compose_prefix)
+        || name.contains(&shared_svc_prefix)
+    {
+        return true;
+    }
+
+    if name.starts_with("coast--") {
+        return labels
+            .get("coast.project")
+            .map(|p| p == project)
+            .unwrap_or(false);
+    }
+
+    false
+}
+
+/// Check whether a Docker image matches the given project by its repo tags.
+///
+/// Matches when any tag starts with `coast-image/{project}:` or `{project}-coasts`.
+fn image_matches_project(repo_tags: &[String], project: &str) -> bool {
+    let prefix_a = format!("coast-image/{}:", project);
+    let prefix_b = format!("{}-coasts", project);
+    repo_tags
+        .iter()
+        .any(|tag| tag.starts_with(&prefix_a) || tag.starts_with(&prefix_b))
+}
+
 /// Remove Docker volumes matching project naming patterns.
 async fn remove_project_volumes(docker: &bollard::Docker, project: &str) -> usize {
     use bollard::volume::ListVolumesOptions;
     use std::collections::HashMap;
-
-    let shared_prefix = format!("coast-shared--{project}--");
-    let compose_prefix = format!("{project}-coasts");
-    let shared_svc_prefix = format!("{project}-shared-services");
 
     let opts = ListVolumesOptions::<String> {
         filters: HashMap::new(),
@@ -402,22 +441,7 @@ async fn remove_project_volumes(docker: &bollard::Docker, project: &str) -> usiz
     for vol in &volumes {
         let name = &vol.name;
 
-        if name.starts_with(&shared_prefix)
-            || name.contains(&compose_prefix)
-            || name.contains(&shared_svc_prefix)
-        {
-            // Shared volumes and compose-project volumes are always ours
-        } else if name.starts_with("coast--") {
-            // Isolated volumes — check labels to verify project ownership
-            let project_match = vol
-                .labels
-                .get("coast.project")
-                .map(|p| p == project)
-                .unwrap_or(false);
-            if !project_match {
-                continue;
-            }
-        } else {
+        if !volume_belongs_to_project(name, project, &vol.labels) {
             continue;
         }
 
@@ -448,16 +472,9 @@ async fn remove_project_images(docker: &bollard::Docker, project: &str) -> usize
         }
     };
 
-    let prefix_a = format!("coast-image/{}:", project);
-    let prefix_b = format!("{}-coasts", project);
-
     let mut count = 0;
     for img in &images {
-        let matches = img
-            .repo_tags
-            .iter()
-            .any(|tag| tag.starts_with(&prefix_a) || tag.starts_with(&prefix_b));
-        if !matches {
+        if !image_matches_project(&img.repo_tags, project) {
             continue;
         }
         let rm_opts = RemoveImageOptions {
@@ -490,5 +507,130 @@ fn remove_artifact_dir(project: &str) -> bool {
             warn!(path = %artifact_dir.display(), error = %e, "failed to remove artifact directory");
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    // --- volume_belongs_to_project tests ---
+
+    #[test]
+    fn test_shared_volume_matches() {
+        let labels = HashMap::new();
+        assert!(volume_belongs_to_project(
+            "coast-shared--my-app--pg_data",
+            "my-app",
+            &labels,
+        ));
+    }
+
+    #[test]
+    fn test_shared_volume_different_project_does_not_match() {
+        let labels = HashMap::new();
+        assert!(!volume_belongs_to_project(
+            "coast-shared--other-app--pg_data",
+            "my-app",
+            &labels,
+        ));
+    }
+
+    #[test]
+    fn test_compose_volume_matches() {
+        let labels = HashMap::new();
+        assert!(volume_belongs_to_project(
+            "my-app-coasts-web_data",
+            "my-app",
+            &labels,
+        ));
+    }
+
+    #[test]
+    fn test_shared_services_volume_matches() {
+        let labels = HashMap::new();
+        assert!(volume_belongs_to_project(
+            "my-app-shared-services-redis_data",
+            "my-app",
+            &labels,
+        ));
+    }
+
+    #[test]
+    fn test_isolated_volume_with_correct_label_matches() {
+        let mut labels = HashMap::new();
+        labels.insert("coast.project".to_string(), "my-app".to_string());
+        assert!(volume_belongs_to_project(
+            "coast--dev--pg",
+            "my-app",
+            &labels
+        ));
+    }
+
+    #[test]
+    fn test_isolated_volume_with_wrong_label_does_not_match() {
+        let mut labels = HashMap::new();
+        labels.insert("coast.project".to_string(), "other-app".to_string());
+        assert!(!volume_belongs_to_project(
+            "coast--dev--pg",
+            "my-app",
+            &labels,
+        ));
+    }
+
+    #[test]
+    fn test_isolated_volume_with_no_label_does_not_match() {
+        let labels = HashMap::new();
+        assert!(!volume_belongs_to_project(
+            "coast--dev--pg",
+            "my-app",
+            &labels,
+        ));
+    }
+
+    #[test]
+    fn test_unrelated_volume_does_not_match() {
+        let labels = HashMap::new();
+        assert!(!volume_belongs_to_project(
+            "postgres_data",
+            "my-app",
+            &labels
+        ));
+    }
+
+    // --- image_matches_project tests ---
+
+    #[test]
+    fn test_coast_image_tag_matches() {
+        let tags = vec!["coast-image/my-app:abc123".to_string()];
+        assert!(image_matches_project(&tags, "my-app"));
+    }
+
+    #[test]
+    fn test_coasts_compose_image_matches() {
+        let tags = vec!["my-app-coasts-web:latest".to_string()];
+        assert!(image_matches_project(&tags, "my-app"));
+    }
+
+    #[test]
+    fn test_different_project_tag_does_not_match() {
+        let tags = vec!["coast-image/other-app:abc123".to_string()];
+        assert!(!image_matches_project(&tags, "my-app"));
+    }
+
+    #[test]
+    fn test_empty_tags_does_not_match() {
+        let tags: Vec<String> = vec![];
+        assert!(!image_matches_project(&tags, "my-app"));
+    }
+
+    #[test]
+    fn test_multiple_tags_one_matches() {
+        let tags = vec![
+            "postgres:15".to_string(),
+            "coast-image/my-app:abc123".to_string(),
+        ];
+        assert!(image_matches_project(&tags, "my-app"));
     }
 }
