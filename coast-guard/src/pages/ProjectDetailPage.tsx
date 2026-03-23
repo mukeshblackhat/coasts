@@ -177,8 +177,8 @@ export default function ProjectDetailPage() {
       {
         key: 'name',
         header: t('col.name'),
-        className: 'w-64',
-        headerClassName: 'w-64',
+        className: 'w-80',
+        headerClassName: 'w-80',
         render: (r) => (
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-semibold truncate">{r.name}</span>
@@ -226,8 +226,8 @@ export default function ProjectDetailPage() {
       {
         key: 'status',
         header: t('col.status'),
-        className: 'w-52',
-        headerClassName: 'w-52',
+        className: 'w-40',
+        headerClassName: 'w-40',
         render: (r) => {
           const mem = memoryMap.get(r.name as string);
           const isActive = ['running', 'checked_out', 'idle'].includes(r.status);
