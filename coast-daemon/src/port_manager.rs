@@ -8,7 +8,7 @@
 /// Port forwarding is the mechanism behind `coast checkout` (instant port swap)
 /// and always-on dynamic ports. The daemon spawns socat processes that forward
 /// traffic from host ports to coast container ports.
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hasher;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::os::unix::process::CommandExt;
@@ -262,14 +262,32 @@ impl Default for PortForwarder {
 /// Returns `CoastError::Port` if no free port can be found after
 /// `MAX_ALLOCATION_ATTEMPTS` attempts.
 pub fn allocate_dynamic_port() -> Result<u16> {
+    allocate_dynamic_port_excluding(&HashSet::new())
+}
+
+/// Allocate a dynamic port while excluding a known set of unusable ports.
+///
+/// This is used by provisioning retries so we don't immediately hand back a
+/// host port that Docker has already rejected.
+pub fn allocate_dynamic_port_excluding(excluded_ports: &HashSet<u16>) -> Result<u16> {
     // Start from a pseudo-random offset to reduce collisions when multiple
     // allocations happen in quick succession.
     let range_size = (PORT_RANGE_END - PORT_RANGE_START + 1) as u32;
     let start_offset = (std::process::id() ^ (timestamp_nanos() as u32)) % range_size;
 
-    for i in 0..MAX_ALLOCATION_ATTEMPTS {
+    let mut inspected_candidates = 0u32;
+    for i in 0..range_size {
         let offset = (start_offset + i) % range_size;
         let port = PORT_RANGE_START + offset as u16;
+
+        if excluded_ports.contains(&port) {
+            continue;
+        }
+
+        inspected_candidates += 1;
+        if inspected_candidates > MAX_ALLOCATION_ATTEMPTS {
+            break;
+        }
 
         if is_port_available(port) {
             debug!(port = port, "Allocated dynamic port");
@@ -1003,6 +1021,19 @@ mod tests {
         assert!(
             unique_count >= 2,
             "Expected at least 2 unique ports from 10 allocations, got {unique_count}: {ports:?}"
+        );
+    }
+
+    #[test]
+    fn test_allocate_dynamic_port_excluding_skips_previously_rejected_port() {
+        let first_port = allocate_dynamic_port().unwrap();
+        let excluded_ports = HashSet::from([first_port]);
+
+        let second_port = allocate_dynamic_port_excluding(&excluded_ports).unwrap();
+
+        assert_ne!(
+            first_port, second_port,
+            "allocator should not return an excluded port"
         );
     }
 
