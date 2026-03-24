@@ -91,6 +91,10 @@ api = "hot"
 - `~/.codex/worktrees/` — Codex（外部、バインドマウントされる）
 - `~/.t3/worktrees/my-app/` — T3 Code（外部、バインドマウントされる。`my-app` はあなたのリポジトリフォルダ名に置き換えてください）
 
+## Troubleshooting
+
+- **Worktree not found** — Coasts が worktree の存在を想定しているのに見つけられない場合は、Coastfile の `worktree_dir` に `~/.t3/worktrees/<project-name>` が含まれていること、および `<project-name>` が `~/.t3/worktrees/` 配下の実際のフォルダ名と一致していることを確認してください。構文とパスの種類については [Worktree Directories](../coastfiles/WORKTREE_DIR.md) を参照してください。
+
 ## Limitations
 
 - Coasts 内のランタイム設定に T3 Code 固有の環境変数へ依存することは避けてください。Coasts はポート、ワークスペースパス、サービスディスカバリを独立して管理します — 代わりに Coastfile の `[ports]` と `coast exec` を使用してください。

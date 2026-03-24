@@ -71,6 +71,17 @@
   coast docs --path concepts_and_terminology/BUILDS.md
   coast search-docs "your question here"         # 语义搜索
 
+## Troubleshooting
+
+如果你遇到 harness 配置相关问题（例如找不到 worktree、`coast lookup` 无法匹配），请阅读相应 harness 文档中的故障排除部分:
+
+  coast docs --path harnesses/CLAUDE_CODE.md
+  coast docs --path harnesses/CODEX.md
+  coast docs --path harnesses/CONDUCTOR.md
+  coast docs --path harnesses/CURSOR.md
+  coast docs --path harnesses/T3_CODE.md
+  coast docs --path harnesses/SHEP.md
+
 ## Rules
 
 - 在会话中的第一个运行时命令之前，始终运行 `coast lookup`。
@@ -120,7 +131,7 @@ description: Inspect and control Coast instances for the current checkout. Use
 
 主机与 Coast 共享文件系统。仅在需要容器内运行中的服务时才使用 `coast exec`。
 
-**在以下情况下使用 `coast exec`:**
+**在以下情况下使用 `coast exec` for:**
 - 集成测试、API 测试，以及任何需要数据库或服务的内容
 - 服务重启、compose 操作
 - 与仅存在于容器中的进程交互的命令

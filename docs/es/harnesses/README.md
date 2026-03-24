@@ -1,5 +1,9 @@
 # Arneses
 
+```youtube
+AWhaeam9R7o
+```
+
 Cada arnés crea worktrees de git en una ubicación diferente. En Coasts, el
 arreglo [`worktree_dir`](../coastfiles/WORKTREE_DIR.md) le indica dónde buscar --
 incluyendo rutas externas como `~/.codex/worktrees` que requieren montajes

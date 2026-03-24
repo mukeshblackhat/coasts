@@ -1,5 +1,9 @@
 # 하니스
 
+```youtube
+AWhaeam9R7o
+```
+
 각 하니스는 서로 다른 위치에 git 워크트리를 생성합니다. Coasts에서는
 [`worktree_dir`](../coastfiles/WORKTREE_DIR.md) 배열이 어디를 찾아야 하는지 알려주며 --
 추가 bind mount가 필요한 `~/.codex/worktrees` 같은 외부 경로도 포함됩니다.

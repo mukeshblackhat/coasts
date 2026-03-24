@@ -26,6 +26,10 @@ codex_setup_prompt.txt
 由于这些 worktree 位于项目根目录之外，Coasts 需要显式
 配置才能发现并挂载它们。
 
+```youtube
+MDidmMQtaqU
+```
+
 ## Setup
 
 将 `~/.codex/worktrees` 添加到 `worktree_dir`:
@@ -118,6 +122,12 @@ api = "hot"
 
 - `.claude/worktrees/` -- Claude Code（本地，无需特殊处理）
 - `~/.codex/worktrees/` -- Codex（外部，使用 bind mount 挂载）
+
+## Troubleshooting
+
+- **Worktree not found** — 如果 Coasts 预期某个 worktree 存在却无法
+  找到它，请确认 Coastfile 的 `worktree_dir` 包含
+  `~/.codex/worktrees`。有关语法和路径类型，请参见 [Worktree Directories](../coastfiles/WORKTREE_DIR.md)。
 
 ## Limitations
 

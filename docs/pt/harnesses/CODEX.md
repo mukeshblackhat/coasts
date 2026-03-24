@@ -26,6 +26,10 @@ Da [documentação do Codex](https://developers.openai.com/codex/app/worktrees/)
 Como esses worktrees ficam fora da raiz do projeto, o Coasts precisa de
 configuração explícita para descobri-los e montá-los.
 
+```youtube
+MDidmMQtaqU
+```
+
 ## Setup
 
 Adicione `~/.codex/worktrees` a `worktree_dir`:
@@ -93,7 +97,7 @@ ou outro encadeamento de ferramentas gerenciado pela OpenAI.
 - **Descoberta** -- `git worktree list --porcelain` tem escopo de repositório, então apenas os worktrees do Codex pertencentes ao projeto atual aparecem, mesmo que o diretório contenha worktrees de muitos projetos.
 - **Nomenclatura** -- Worktrees com HEAD destacado aparecem como seu caminho relativo dentro do diretório externo (`a0db/my-app`, `eca7/my-app`). Worktrees baseados em branch mostram o nome da branch.
 - **Atribuição** -- `coast assign` remonta `/workspace` a partir do caminho do bind mount externo.
-- **Sincronização de arquivos ignorados pelo Git** -- É executada no sistema de arquivos do host com caminhos absolutos, funciona sem o bind mount.
+- **Sincronização de arquivos ignorados pelo Git** -- É executada no sistema de arquivos do host com caminhos absolutos e funciona sem o bind mount.
 - **Detecção de órfãos** -- O observador do git varre diretórios externos
   recursivamente, filtrando por ponteiros gitdir em `.git`. Se o Codex excluir um
   worktree, o Coasts remove automaticamente a atribuição da instância.
@@ -121,7 +125,14 @@ api = "hot"
 - `.claude/worktrees/` -- Claude Code (local, sem tratamento especial)
 - `~/.codex/worktrees/` -- Codex (externo, com bind mount)
 
-## Limitações
+## Troubleshooting
+
+- **Worktree não encontrado** — Se o Coasts espera que um worktree exista, mas não consegue
+  encontrá-lo, verifique se o `worktree_dir` do Coastfile inclui
+  `~/.codex/worktrees`. Veja [Worktree Directories](../coastfiles/WORKTREE_DIR.md)
+  para sintaxe e tipos de caminho.
+
+## Limitations
 
 - O Codex pode limpar worktrees a qualquer momento. A detecção de órfãos no Coasts
   lida com isso de forma elegante.

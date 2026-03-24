@@ -28,6 +28,10 @@ CLI에서도 skill 내용을 가져올 수 있습니다: `coast skills-prompt`.
 - 재사용 가능한 `/coasts` 워크플로를 위한 `.claude/skills/coasts/SKILL.md`
 - 추가 진입점으로 명령 파일이 필요할 때만 사용하는 `.claude/commands/coasts.md`
 
+```youtube
+yjMFVoOiAW0
+```
+
 ## Setup
 
 `.claude/worktrees`를 `worktree_dir`에 추가하세요:
@@ -123,6 +127,13 @@ api = "hot"
 
 - `.claude/worktrees/` — Claude Code worktree
 - `~/.codex/worktrees/` — 이 리포지토리에서 Codex도 사용하는 경우의 Codex worktree
+
+## Troubleshooting
+
+- **Worktree not found** — Coasts가 worktree가 존재해야 한다고 예상하지만
+  찾을 수 없다면, Coastfile의 `worktree_dir`에 `.claude/worktrees`가 포함되어
+  있는지 확인하세요. 구문과 경로 유형은
+  [Worktree Directories](../coastfiles/WORKTREE_DIR.md)를 참고하세요.
 
 ## Limitations
 

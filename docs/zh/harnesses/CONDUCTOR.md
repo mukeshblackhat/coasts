@@ -18,6 +18,10 @@ conductor_setup_prompt.txt
 设置完成后，**彻底关闭并重新打开 Conductor** 以使更改生效。如果
 `/coasts` 命令没有出现，请再次关闭并重新打开。
 
+```youtube
+mbwilJHlanQ
+```
+
 ## 设置
 
 将 `~/conductor/workspaces/<project-name>` 添加到 `worktree_dir`。与 Codex（它将所有项目存储在一个扁平目录下）不同，Conductor 将 worktree 嵌套在按项目划分的子目录中，因此路径必须包含项目名称。在下面的示例中，`my-app` 必须与你的仓库在 `~/conductor/workspaces/` 下的实际文件夹名称一致。
@@ -29,6 +33,8 @@ worktree_dir = [".worktrees", "~/conductor/workspaces/my-app"]
 ```
 
 Conductor 允许你为每个仓库配置工作区路径，因此默认的 `~/conductor/workspaces` 可能与你的设置不一致。请检查你的 Conductor 仓库设置以找到实际路径，并相应调整——无论目录位于何处，原理都是一样的。
+
+如果你为同一仓库配置了多个 Conductor 项目，则每个项目都会在其各自的子目录下创建工作区（例如 `~/conductor/workspaces/my-app-frontend`、`~/conductor/workspaces/my-app-backend`）。`worktree_dir` 条目必须与 Conductor 实际创建的目录名一致，因此你可能需要多个条目，或者在项目之间切换时更新路径。
 
 Coasts 在运行时展开 `~`，并将任何以 `~/` 或 `/` 开头的路径视为外部路径。详见 [Worktree Directories](../coastfiles/WORKTREE_DIR.md)。
 
@@ -88,6 +94,11 @@ api = "hot"
 ```
 
 - `~/conductor/workspaces/my-app/` — Conductor（外部，绑定挂载；将 `my-app` 替换为你的仓库文件夹名称）
+
+## Troubleshooting
+
+- **找不到 worktree** — 如果 Coasts 认为某个 worktree 应该存在，但却找不到它，请确认 Coastfile 的 `worktree_dir` 包含正确的 `~/conductor/workspaces/<project-name>` 路径。`<project-name>` 这一段必须与 Conductor 在 `~/conductor/workspaces/` 下实际创建的文件夹名称一致。有关语法和路径类型，请参见 [Worktree Directories](../coastfiles/WORKTREE_DIR.md)。
+- **同一仓库对应多个项目** — 如果为同一仓库配置了多个 Conductor 项目，则每个项目都会在不同的子目录下创建工作区。必须更新 `worktree_dir`，使其与 Conductor 为当前活动项目动态创建的目录一致。如果你在项目之间切换，路径会变化，Coastfile 也需要反映这一点。
 
 ## Conductor Env Vars
 

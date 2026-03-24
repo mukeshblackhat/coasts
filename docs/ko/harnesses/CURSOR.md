@@ -1,5 +1,9 @@
 # Cursor
 
+```youtube
+ZmbcZ_QfO6w
+```
+
 ## Quick setup
 
 [Coast CLI](../GETTING_STARTED.md)가 필요합니다. Coasts를 자동으로 설정하려면
@@ -164,6 +168,15 @@ api = "hot"
 - `.claude/worktrees/` — Claude Code worktree
 - `~/.codex/worktrees/` — Codex worktree
 - `~/.cursor/worktrees/my-app/` — Cursor Parallel Agent worktree
+
+## Troubleshooting
+
+- **Worktree를 찾을 수 없음** — Coasts가 worktree가 존재해야 한다고 예상하지만
+  찾을 수 없는 경우, Coastfile의 `worktree_dir`에
+  `~/.cursor/worktrees/<project-name>`가 포함되어 있는지, 그리고
+  `<project-name>`이 `~/.cursor/worktrees/` 아래의 실제 폴더 이름과 일치하는지
+  확인하세요. 구문과 경로 유형은
+  [Worktree Directories](../coastfiles/WORKTREE_DIR.md)를 참조하세요.
 
 ## Limitations
 

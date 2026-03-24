@@ -1,5 +1,9 @@
 # Harnesses
 
+```youtube
+AWhaeam9R7o
+```
+
 Каждый harness создает git worktree в своем месте. В Coasts массив
 [`worktree_dir`](../coastfiles/WORKTREE_DIR.md) указывает, где их искать --
 включая внешние пути, такие как `~/.codex/worktrees`, для которых требуются

@@ -1,9 +1,11 @@
 # Навыки для хост-агентов
 
-Если вы используете AI-агентов для программирования на хосте, пока ваше приложение работает внутри Coasts, вашему агенту обычно нужны две специфичные для Coast части настройки:
+Если вы используете AI-агентов для программирования на хосте, пока ваше приложение работает внутри Coasts, вашему
+агенту обычно нужны две специфичные для Coast части настройки:
 
 1. всегда активный раздел Coast Runtime в файле проектных инструкций или файле правил вашего harness
-2. переиспользуемый навык рабочего процесса Coast, такой как `/coasts`, если harness поддерживает проектные навыки
+2. переиспользуемый навык рабочего процесса Coast, такой как `/coasts`, если harness поддерживает
+   проектные навыки
 
 Без первой части агент редактирует файлы, но забывает использовать `coast exec`.
 Без второй каждое назначение Coast, лог и UI-процесс приходится заново
@@ -123,6 +125,19 @@ Before guessing about Coast behavior, explore the docs:
   coast docs --path concepts_and_terminology/ASSIGN.md
   coast docs --path concepts_and_terminology/BUILDS.md
   coast search-docs "your question here"         # semantic search
+
+## Troubleshooting
+
+If you run into issues with harness configuration (e.g. worktrees not being
+found, `coast lookup` not matching), read the troubleshooting section of the
+relevant harness doc:
+
+  coast docs --path harnesses/CLAUDE_CODE.md
+  coast docs --path harnesses/CODEX.md
+  coast docs --path harnesses/CONDUCTOR.md
+  coast docs --path harnesses/CURSOR.md
+  coast docs --path harnesses/T3_CODE.md
+  coast docs --path harnesses/SHEP.md
 
 ## Rules
 

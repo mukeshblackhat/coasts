@@ -98,6 +98,13 @@ api = "hot"
 - `~/.codex/worktrees/` — Codex（外部，绑定挂载）
 - `~/.t3/worktrees/my-app/` — T3 Code（外部，绑定挂载；请将 `my-app` 替换为您的仓库文件夹名称）
 
+## Troubleshooting
+
+- **Worktree not found** — 如果 Coasts 预期某个 worktree 存在但无法找到它，请确认 Coastfile 的 `worktree_dir` 包含
+  `~/.t3/worktrees/<project-name>`，并且 `<project-name>` 与
+  `~/.t3/worktrees/` 下的实际文件夹名称一致。有关语法和路径类型，请参见
+  [Worktree Directories](../coastfiles/WORKTREE_DIR.md)。
+
 ## Limitations
 
 - 避免依赖 T3 Code 特定的环境变量来进行 Coasts 内部的运行时配置。Coasts 会独立管理端口、工作区路径和服务发现——请改用 Coastfile `[ports]` 和 `coast exec`。

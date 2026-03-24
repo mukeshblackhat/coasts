@@ -25,6 +25,10 @@ CLI에서도 skill 내용을 가져올 수 있습니다: `coast skills-prompt`.
 이러한 worktree는 프로젝트 루트 밖에 존재하므로, Coasts가 이를 발견하고 마운트하려면 명시적인
 구성이 필요합니다.
 
+```youtube
+MDidmMQtaqU
+```
+
 ## Setup
 
 `worktree_dir`에 `~/.codex/worktrees`를 추가하세요:
@@ -119,6 +123,13 @@ api = "hot"
 
 - `.claude/worktrees/` -- Claude Code(로컬, 특별한 처리 없음)
 - `~/.codex/worktrees/` -- Codex(외부, bind mount됨)
+
+## Troubleshooting
+
+- **Worktree not found** — Coasts가 worktree가 존재해야 한다고 예상하지만
+  찾을 수 없다면, Coastfile의 `worktree_dir`에
+  `~/.codex/worktrees`가 포함되어 있는지 확인하세요.
+  구문과 경로 유형은 [Worktree Directories](../coastfiles/WORKTREE_DIR.md)를 참고하세요.
 
 ## Limitations
 

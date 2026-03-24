@@ -81,6 +81,19 @@ Coastfile, сначала прочитайте документацию по Coa
   coast docs --path concepts_and_terminology/BUILDS.md
   coast search-docs "your question here"         # семантический поиск
 
+## Troubleshooting
+
+Если у вас возникают проблемы с конфигурацией harness (например, не находятся
+worktree или `coast lookup` не находит совпадение), прочитайте раздел
+устранения неполадок в документации по соответствующему harness:
+
+  coast docs --path harnesses/CLAUDE_CODE.md
+  coast docs --path harnesses/CODEX.md
+  coast docs --path harnesses/CONDUCTOR.md
+  coast docs --path harnesses/CURSOR.md
+  coast docs --path harnesses/T3_CODE.md
+  coast docs --path harnesses/SHEP.md
+
 ## Rules
 
 - Всегда запускайте `coast lookup` перед первой runtime-командой в сессии.

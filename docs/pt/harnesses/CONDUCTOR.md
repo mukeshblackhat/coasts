@@ -19,6 +19,10 @@ Você também pode obter o conteúdo da skill pela CLI: `coast skills-prompt`.
 Após a configuração, **feche e reabra completamente o Conductor** para que as alterações entrem em vigor. Se
 o comando `/coasts` não aparecer, feche e reabra novamente.
 
+```youtube
+mbwilJHlanQ
+```
+
 ## Configuração
 
 Adicione `~/conductor/workspaces/<project-name>` a `worktree_dir`. Diferentemente do Codex (que armazena todos os projetos em um único diretório plano), o Conductor aninha worktrees em um subdiretório por projeto, então o caminho deve incluir o nome do projeto. No exemplo abaixo, `my-app` deve corresponder ao nome real da pasta em `~/conductor/workspaces/` para o seu repositório.
@@ -30,6 +34,8 @@ worktree_dir = [".worktrees", "~/conductor/workspaces/my-app"]
 ```
 
 O Conductor permite configurar o caminho dos workspaces por repositório, então o padrão `~/conductor/workspaces` pode não corresponder à sua configuração. Verifique as configurações do repositório no Conductor para encontrar o caminho real e ajuste conforme necessário — o princípio é o mesmo independentemente de onde o diretório esteja.
+
+Se você tiver mais de um projeto do Conductor configurado para o mesmo repositório, cada projeto cria workspaces em seu próprio subdiretório (por exemplo, `~/conductor/workspaces/my-app-frontend`, `~/conductor/workspaces/my-app-backend`). A entrada `worktree_dir` deve corresponder ao nome do diretório que o Conductor realmente cria, então você pode precisar de várias entradas ou precisar atualizar o caminho ao alternar entre projetos.
 
 O Coasts expande `~` em tempo de execução e trata qualquer caminho que comece com `~/` ou `/` como
 externo. Consulte [Worktree Directories](../coastfiles/WORKTREE_DIR.md) para
@@ -98,6 +104,21 @@ api = "hot"
 ```
 
 - `~/conductor/workspaces/my-app/` — Conductor (externo, com bind mount; substitua `my-app` pelo nome da pasta do seu repositório)
+
+## Solução de problemas
+
+- **Worktree não encontrado** — Se o Coasts espera que um worktree exista, mas não consegue
+  encontrá-lo, verifique se o `worktree_dir` do Coastfile inclui o caminho correto
+  `~/conductor/workspaces/<project-name>`. O segmento `<project-name>`
+  deve corresponder ao nome real da pasta que o Conductor cria em
+  `~/conductor/workspaces/`. Consulte
+  [Worktree Directories](../coastfiles/WORKTREE_DIR.md) para sintaxe e tipos
+  de caminho.
+- **Vários projetos para o mesmo repositório** — Se mais de um projeto do Conductor
+  estiver configurado para o mesmo repositório, cada projeto cria workspaces em
+  um subdiretório diferente. O `worktree_dir` deve ser atualizado para corresponder ao
+  diretório que o Conductor cria dinamicamente para o projeto ativo. Se você alternar
+  entre projetos, o caminho muda e o Coastfile precisa refletir isso.
 
 ## Variáveis de Ambiente do Conductor
 

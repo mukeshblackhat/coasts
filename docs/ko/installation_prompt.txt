@@ -236,3 +236,14 @@ Assign 전략 — Coast를 worktree 간 전환할 때 발생하는 일:
 8. `coast build`를 실행하세요. 실패하면 오류를 확인하고 문서(`coast search-docs "<error description>"`)를 참고하여 문제를 해결하세요.
 9. `coast run dev-1`을 실행하세요. 실패하면 오류를 확인하고 문서를 참고하세요.
 10. `coast ui`를 실행해 Coastguard 대시보드를 여세요(이 단계는 작업이 끝났을 때 사용자를 위한 것입니다).
+11. **하네스 스킬 설정(권장).** 이제 Coastfile이 구성되었고 Coast가 실행 중이므로, 3단계에서 사용자가 선택한 하네스들에 대해 Coast 스킬을 설정하는 것을 강력히 권장합니다. 이 스킬들은 각 하네스의 AI 에이전트에게 Coasts 사용 방법을 가르쳐 줍니다 — 이것이 없으면 하네스는 테스트 실행, 로그 읽기, Coast 인스턴스 관리 방법을 알지 못합니다.
+
+   사용자에게 이렇게 물어보세요: "Your Coast is up and running! I'd recommend setting up the Coast skills for [list the harnesses from step 3] now — this only takes a moment and will let your AI coding tools work with Coasts automatically. Want me to do that?"
+
+   사용자가 동의하면, 다음을 실행하세요:
+
+     coast harness-setup-prompt --harness <name1> --harness <name2> ...
+
+   3단계에서 사용자가 선택한 모든 하네스를 전달하세요. 출력의 지침을 따라 각 하네스를 설정하세요. 1단계에서 이미 CLI를 확인했고 3단계에서 `worktree_dir`를 구성했으므로, 하네스 지침에서는 해당 단계들을 건너뛰세요(여러 하네스가 있을 경우 출력에서 이를 다시 알려줍니다).
+
+   사용자가 거절하면, 나중에 `coast harness-setup-prompt --harness <name>`를 실행하고 지침을 따르면 스킬을 설정할 수 있다고 알려주세요.

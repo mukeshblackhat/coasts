@@ -29,6 +29,10 @@ camadas para o Coasts:
 - `.claude/commands/coasts.md` somente quando você quiser um arquivo de comando como um ponto de entrada
   extra
 
+```youtube
+yjMFVoOiAW0
+```
+
 ## Setup
 
 Adicione `.claude/worktrees` a `worktree_dir`:
@@ -130,6 +134,13 @@ api = "hot"
 
 - `.claude/worktrees/` — worktrees do Claude Code
 - `~/.codex/worktrees/` — worktrees do Codex se você também usar Codex neste repositório
+
+## Troubleshooting
+
+- **Worktree not found** — Se o Coasts espera que uma worktree exista, mas não consegue
+  encontrá-la, verifique se o `worktree_dir` do Coastfile inclui
+  `.claude/worktrees`. Veja [Worktree Directories](../coastfiles/WORKTREE_DIR.md)
+  para a sintaxe e os tipos de caminho.
 
 ## Limitações
 

@@ -71,6 +71,17 @@ Coast 동작을 추측하기 전에 문서를 살펴보세요:
   coast docs --path concepts_and_terminology/BUILDS.md
   coast search-docs "your question here"         # 시맨틱 검색
 
+## Troubleshooting
+
+하네스 구성 문제(예: 워크트리를 찾지 못함, `coast lookup`이 일치하지 않음)를 겪는 경우, 관련 하네스 문서의 문제 해결 섹션을 읽으세요:
+
+  coast docs --path harnesses/CLAUDE_CODE.md
+  coast docs --path harnesses/CODEX.md
+  coast docs --path harnesses/CONDUCTOR.md
+  coast docs --path harnesses/CURSOR.md
+  coast docs --path harnesses/T3_CODE.md
+  coast docs --path harnesses/SHEP.md
+
 ## Rules
 
 - 세션에서 첫 번째 런타임 명령 전에 항상 `coast lookup`을 실행하세요.

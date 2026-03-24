@@ -26,6 +26,10 @@ codex_setup_prompt.txt
 Поскольку эти worktree находятся вне корня проекта, Coasts требуется явная
 конфигурация, чтобы обнаруживать и монтировать их.
 
+```youtube
+MDidmMQtaqU
+```
+
 ## Setup
 
 Добавьте `~/.codex/worktrees` в `worktree_dir`:
@@ -120,6 +124,12 @@ api = "hot"
 
 - `.claude/worktrees/` -- Claude Code (локально, без специальной обработки)
 - `~/.codex/worktrees/` -- Codex (внешний, с bind mount)
+
+## Troubleshooting
+
+- **Worktree not found** — Если Coasts ожидает, что worktree существует, но не
+  может его найти, убедитесь, что `worktree_dir` в Coastfile включает
+  `~/.codex/worktrees`. Сведения о синтаксисе и типах путей см. в [Worktree Directories](../coastfiles/WORKTREE_DIR.md).
 
 ## Limitations
 

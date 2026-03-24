@@ -115,3 +115,11 @@ api = "hot"
 - 不同仓库 = 不同的 hashes
 - 路径分隔符在哈希之前会规范化为 `/`
 - 可通过 `shep feat show <feature-id>` 或 `ls ~/.shep/repos` 找到该 hash
+
+## 故障排除
+
+- **未找到工作树** — 如果 Coasts 预期某个工作树存在，但无法
+  找到它，请确认 Coastfile 的 `worktree_dir` 包含
+  `~/.shep/repos/*/wt`。该 glob 模式必须与 Shep 的目录结构匹配。
+  有关语法和路径类型，请参阅
+  [工作树目录](../coastfiles/WORKTREE_DIR.md)。

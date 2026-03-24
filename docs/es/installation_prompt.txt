@@ -236,3 +236,14 @@ Estrategia de assign — qué ocurre al cambiar un Coast entre worktrees:
 8. Ejecuta `coast build`. Si falla, revisa el error y consulta la documentación (`coast search-docs "<error description>"`) para solucionar problemas.
 9. Ejecuta `coast run dev-1`. Si falla, revisa el error y consulta la documentación.
 10. Ejecuta `coast ui` para abrir el panel de Coastguard (esto es para el usuario cuando hayas terminado).
+11. **Configura las skills de los harnesses (Recomendado).** Ahora que el Coastfile está configurado y Coast está en ejecución, es muy recomendable configurar las skills de Coast para los harnesses que el usuario seleccionó en el paso 3. Estas skills enseñan al agente de IA en cada harness cómo usar Coasts — sin ellas, el harness no sabrá cómo ejecutar pruebas, leer logs ni gestionar instancias de Coast.
+
+   Pregunta al usuario: "¡Tu Coast ya está en marcha! Te recomiendo configurar ahora las skills de Coast para [lista de los harnesses del paso 3] — esto solo toma un momento y permitirá que tus herramientas de programación con IA funcionen con Coasts automáticamente. ¿Quieres que lo haga?"
+
+   Si el usuario acepta, ejecuta:
+
+     coast harness-setup-prompt --harness <name1> --harness <name2> ...
+
+   pasando todos los harnesses que el usuario seleccionó en el paso 3. Sigue las instrucciones de la salida para configurar cada harness. Como ya verificaste la CLI en el paso 1 y configuraste `worktree_dir` en el paso 3, omite esos pasos en las instrucciones del harness (la salida te lo recordará cuando haya múltiples harnesses presentes).
+
+   Si el usuario rechaza, infórmale que puede configurar las skills más tarde ejecutando `coast harness-setup-prompt --harness <name>` y siguiendo las instrucciones.

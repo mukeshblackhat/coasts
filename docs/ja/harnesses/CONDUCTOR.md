@@ -14,6 +14,10 @@ CLI から skill の内容を取得することもできます: `coast skills-pr
 
 セットアップ後、変更を反映するには **Conductor を完全に閉じて再度開いてください**。`/coasts` コマンドが表示されない場合は、もう一度閉じて開き直してください。
 
+```youtube
+mbwilJHlanQ
+```
+
 ## Setup
 
 `~/conductor/workspaces/<project-name>` を `worktree_dir` に追加します。Codex（すべてのプロジェクトを 1 つのフラットなディレクトリ配下に保存する）とは異なり、Conductor は worktree をプロジェクトごとのサブディレクトリ配下にネストするため、パスにはプロジェクト名を含める必要があります。以下の例では、`my-app` はあなたのリポジトリに対応する `~/conductor/workspaces/` 配下の実際のフォルダ名と一致している必要があります。
@@ -25,6 +29,8 @@ worktree_dir = [".worktrees", "~/conductor/workspaces/my-app"]
 ```
 
 Conductor ではリポジトリごとにワークスペースパスを設定できるため、デフォルトの `~/conductor/workspaces` があなたの設定と一致しない場合があります。実際のパスを確認するには Conductor のリポジトリ設定を確認し、それに応じて調整してください — ディレクトリがどこにあっても原則は同じです。
+
+同じリポジトリに対して複数の Conductor プロジェクトを設定している場合、各プロジェクトはそれぞれ独自のサブディレクトリ配下にワークスペースを作成します（例: `~/conductor/workspaces/my-app-frontend`、`~/conductor/workspaces/my-app-backend`）。`worktree_dir` のエントリは、Conductor が実際に作成するディレクトリ名と一致している必要があるため、複数のエントリが必要になる場合や、プロジェクトを切り替える際にパスを更新する必要がある場合があります。
 
 Coasts は実行時に `~` を展開し、`~/` または `/` で始まるパスを
 外部として扱います。詳細は [Worktree Directories](../coastfiles/WORKTREE_DIR.md) を参照して
@@ -93,6 +99,18 @@ api = "hot"
 ```
 
 - `~/conductor/workspaces/my-app/` — Conductor（外部、bind-mounted; `my-app` はあなたのリポジトリフォルダ名に置き換えてください）
+
+## Troubleshooting
+
+- **Worktree not found** — Coasts が worktree の存在を期待しているのに
+  見つけられない場合は、Coastfile の `worktree_dir` に正しい
+  `~/conductor/workspaces/<project-name>` パスが含まれていることを確認してください。`<project-name>` の部分は、
+  Conductor が `~/conductor/workspaces/` 配下に実際に作成するフォルダ名と一致している必要があります。構文とパスの種類については
+  [Worktree Directories](../coastfiles/WORKTREE_DIR.md) を参照してください。
+- **Multiple projects for the same repo** — 同じリポジトリに対して複数の Conductor プロジェクトが
+  設定されている場合、各プロジェクトは異なるサブディレクトリ配下にワークスペースを作成します。`worktree_dir` は、
+  アクティブなプロジェクトに対して Conductor が動的に作成するディレクトリに一致するよう更新する必要があります。プロジェクトを切り替えると
+  パスも変わるため、Coastfile にそれを反映させる必要があります。
 
 ## Conductor Env Vars
 

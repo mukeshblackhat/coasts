@@ -236,3 +236,14 @@ Assign 策略——在 worktree 之间切换 Coast 时会发生什么:
 8. 运行 `coast build`。如果失败，检查错误并查阅文档（`coast search-docs "<error description>"`）进行排障。
 9. 运行 `coast run dev-1`。如果失败，检查错误并查阅文档。
 10. 运行 `coast ui` 打开 Coastguard 仪表盘（这是在你完成后供用户使用的）。
+11. **设置 harness skills（推荐）。** 现在 Coastfile 已配置完成，且 Coast 已在运行，强烈建议为用户在第 3 步中选择的 harness 设置 Coast skills。这些 skills 会教会每个 harness 中的 AI agent 如何使用 Coasts——如果没有它们，harness 将不知道如何运行测试、读取日志或管理 Coast 实例。
+
+   询问用户:"Your Coast is up and running! I'd recommend setting up the Coast skills for [list the harnesses from step 3] now — this only takes a moment and will let your AI coding tools work with Coasts automatically. Want me to do that?"
+
+   如果用户同意，运行:
+
+     coast harness-setup-prompt --harness <name1> --harness <name2> ...
+
+   传入用户在第 3 步中选择的每一个 harness。按照输出中的说明设置每个 harness。由于你已经在第 1 步中验证了 CLI，并在第 3 步中配置了 `worktree_dir`，请跳过 harness 说明中的这些步骤（当存在多个 harness 时，输出会提醒你这一点）。
+
+   如果用户拒绝，告知他们稍后可以通过运行 `coast harness-setup-prompt --harness <name>` 并按照说明进行设置。

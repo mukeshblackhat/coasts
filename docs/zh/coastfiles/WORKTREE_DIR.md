@@ -47,7 +47,7 @@ worktree_dir = ["/shared/worktrees", ".worktrees"]
 
 ### Glob 模式（外部）
 
-外部路径可以包含 glob 元字符（`*`、`?`、`[...]`）。Coast 会在运行时根据主机文件系统展开它们，并为每个匹配的目录创建一个绑定挂载。
+外部路径可以包含 glob 元字符（`*`、`?`、`[...]`）。
 
 ```toml
 worktree_dir = [".worktrees", "~/.shep/repos/*/wt"]
@@ -62,9 +62,9 @@ worktree_dir = [".worktrees", "~/.shep/repos/*/wt"]
 - `[abc]` — 匹配集合中的任意字符
 - `[!abc]` — 匹配不在集合中的任意字符
 
-凡是解析 worktree 目录的地方都会进行 glob 展开:容器创建、assign、start、lookup，以及 git watcher。匹配结果会被排序以确保顺序确定。如果某个 glob 没有匹配到任何目录，则会被静默跳过。
+Coast 挂载的是 **glob 根目录**——第一个通配符路径组件之前的目录前缀——而不是每个单独的匹配项。对于 `~/.shep/repos/*/wt`，glob 根目录是 `~/.shep/repos/`。这意味着在容器创建后出现的新目录（例如由 Shep 创建的新哈希目录）无需重建容器就能自动在容器内访问。对位于新的 glob 匹配路径下的 worktree 进行动态 assign 会立即生效。
 
-与其他外部路径一样，添加 glob 模式后，必须重新创建容器（`coast run`）绑定挂载才会生效。
+向 Coastfile 中添加*新的* glob 模式仍然需要运行 `coast run` 来创建绑定挂载。但一旦该模式已存在，之后匹配它的新目录都会被自动识别。
 
 ## 外部目录的工作方式
 

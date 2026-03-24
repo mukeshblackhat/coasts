@@ -47,7 +47,7 @@ worktree_dir = ["/shared/worktrees", ".worktrees"]
 
 ### Patrones glob (externos)
 
-Las rutas externas pueden contener metacaracteres glob (`*`, `?`, `[...]`). Coast los expande en tiempo de ejecución contra el sistema de archivos del host, creando un bind mount para cada directorio coincidente.
+Las rutas externas pueden contener metacaracteres glob (`*`, `?`, `[...]`).
 
 ```toml
 worktree_dir = [".worktrees", "~/.shep/repos/*/wt"]
@@ -62,9 +62,9 @@ Sintaxis glob compatible:
 - `[abc]` — coincide con cualquier carácter del conjunto
 - `[!abc]` — coincide con cualquier carácter que no esté en el conjunto
 
-La expansión glob ocurre en todos los lugares donde se resuelven los directorios de worktree: creación del contenedor, assign, start, lookup y el watcher de git. Las coincidencias se ordenan para un orden determinista. Si un glob no coincide con ningún directorio, se omite silenciosamente.
+Coast monta la **raíz del glob** — el prefijo del directorio antes del primer componente con comodín — en lugar de cada coincidencia individual. Para `~/.shep/repos/*/wt`, la raíz del glob es `~/.shep/repos/`. Esto significa que los directorios nuevos que aparezcan después de la creación del contenedor (por ejemplo, un nuevo directorio hash creado por Shep) son accesibles automáticamente dentro del contenedor sin necesidad de recrearlo. Las asignaciones dinámicas a worktrees bajo nuevas coincidencias del glob funcionan de inmediato.
 
-Como ocurre con otras rutas externas, el contenedor debe recrearse (`coast run`) después de agregar un patrón glob para que el bind mount surta efecto.
+Agregar un patrón glob *nuevo* al Coastfile sigue requiriendo `coast run` para crear el bind mount. Pero una vez que el patrón existe, los nuevos directorios que coincidan con él se detectan automáticamente.
 
 ## Cómo funcionan los directorios externos
 

@@ -112,3 +112,11 @@ api = "hot"
 - 다른 저장소 = 다른 해시
 - 경로 구분자는 해싱 전에 `/`로 정규화됨
 - 해시는 `shep feat show <feature-id>` 또는 `ls ~/.shep/repos`로 찾을 수 있음
+
+## 문제 해결
+
+- **Worktree를 찾을 수 없음** — Coasts가 worktree가 존재해야 한다고 예상하지만
+  찾지 못한다면, Coastfile의 `worktree_dir`에
+  `~/.shep/repos/*/wt`가 포함되어 있는지 확인하세요. glob 패턴은 Shep의 디렉터리 구조와 일치해야 합니다.
+  구문과 경로 유형은
+  [Worktree Directories](../coastfiles/WORKTREE_DIR.md)를 참조하세요.

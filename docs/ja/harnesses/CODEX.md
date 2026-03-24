@@ -24,6 +24,10 @@ CLI からスキル内容を取得することもできます: `coast skills-pro
 これらの worktree はプロジェクトルートの外側に存在するため、Coasts がそれらを検出してマウントするには明示的な
 設定が必要です。
 
+```youtube
+MDidmMQtaqU
+```
+
 ## Setup
 
 `worktree_dir` に `~/.codex/worktrees` を追加します:
@@ -114,6 +118,12 @@ api = "hot"
 
 - `.claude/worktrees/` -- Claude Code（ローカル、特別な処理なし）
 - `~/.codex/worktrees/` -- Codex（外部、バインドマウントされる）
+
+## Troubleshooting
+
+- **Worktree not found** — Coasts が存在するはずの worktree を見つけられない場合は、Coastfile の `worktree_dir` に
+  `~/.codex/worktrees` が含まれていることを確認してください。構文とパスの種類については [Worktree Directories](../coastfiles/WORKTREE_DIR.md)
+  を参照してください。
 
 ## Limitations
 

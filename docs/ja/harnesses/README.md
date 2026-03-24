@@ -1,5 +1,9 @@
 # Harnesses
 
+```youtube
+AWhaeam9R7o
+```
+
 各 harness は異なる場所に git worktree を作成します。Coasts では、
 [`worktree_dir`](../coastfiles/WORKTREE_DIR.md) 配列によって、どこを探すかを指定します --
 これには、追加の bind mount を必要とする `~/.codex/worktrees` のような

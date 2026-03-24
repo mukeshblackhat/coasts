@@ -19,6 +19,10 @@ CLI에서 스킬 내용도 가져올 수 있습니다: `coast skills-prompt`.
 설정 후에는 변경 사항이 적용되도록 **Conductor를 완전히 종료한 뒤 다시 여세요**. `/coasts`
 명령이 나타나지 않으면 다시 한 번 종료 후 재실행하세요.
 
+```youtube
+mbwilJHlanQ
+```
+
 ## 설정
 
 `~/conductor/workspaces/<project-name>`를 `worktree_dir`에 추가하세요. Codex와 달리(모든 프로젝트를 하나의 평면 디렉터리 아래에 저장함), Conductor는 프로젝트별 하위 디렉터리 아래에 worktree를 중첩하므로 경로에 프로젝트 이름이 포함되어야 합니다. 아래 예시에서 `my-app`은 해당 저장소에 대해 `~/conductor/workspaces/` 아래의 실제 폴더 이름과 일치해야 합니다.
@@ -30,6 +34,8 @@ worktree_dir = [".worktrees", "~/conductor/workspaces/my-app"]
 ```
 
 Conductor는 저장소별로 워크스페이스 경로를 구성할 수 있으므로, 기본값인 `~/conductor/workspaces`가 현재 설정과 일치하지 않을 수 있습니다. 실제 경로를 확인하려면 Conductor 저장소 설정을 확인하고 그에 맞게 조정하세요 — 디렉터리가 어디에 있든 원리는 동일합니다.
+
+같은 저장소에 대해 둘 이상의 Conductor 프로젝트가 구성되어 있다면, 각 프로젝트는 자체 하위 디렉터리 아래에 워크스페이스를 생성합니다(예: `~/conductor/workspaces/my-app-frontend`, `~/conductor/workspaces/my-app-backend`). `worktree_dir` 항목은 Conductor가 실제로 생성하는 디렉터리 이름과 일치해야 하므로, 여러 항목이 필요하거나 프로젝트를 전환할 때 경로를 업데이트해야 할 수 있습니다.
 
 Coasts는 런타임에 `~`를 확장하며, `~/` 또는 `/`로 시작하는 모든 경로를 외부 경로로 취급합니다. 자세한 내용은 [Worktree Directories](../coastfiles/WORKTREE_DIR.md)를 참조하세요.
 
@@ -84,6 +90,20 @@ api = "hot"
 ```
 
 - `~/conductor/workspaces/my-app/` — Conductor(외부, bind-mounted; `my-app`은 저장소 폴더 이름으로 바꾸세요)
+
+## 문제 해결
+
+- **Worktree를 찾을 수 없음** — Coasts가 worktree가 존재할 것으로 예상하지만
+  찾을 수 없다면, Coastfile의 `worktree_dir`에 올바른
+  `~/conductor/workspaces/<project-name>` 경로가 포함되어 있는지 확인하세요. `<project-name>` 구간은
+  Conductor가 `~/conductor/workspaces/` 아래에 실제로 생성하는 폴더 이름과 일치해야
+  합니다. 구문과 경로 유형에 대해서는
+  [Worktree Directories](../coastfiles/WORKTREE_DIR.md)를 참조하세요.
+- **같은 저장소에 대한 여러 프로젝트** — 같은 저장소에 대해 둘 이상의 Conductor 프로젝트가
+  구성되어 있다면, 각 프로젝트는 서로 다른 하위 디렉터리 아래에 워크스페이스를 생성합니다.
+  `worktree_dir`는 활성 프로젝트에 대해 Conductor가 동적으로 생성하는 디렉터리와 일치하도록
+  업데이트되어야 합니다. 프로젝트를 전환하면 경로가 바뀌므로 Coastfile도 이를 반영해야
+  합니다.
 
 ## Conductor 환경 변수
 

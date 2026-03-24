@@ -1,5 +1,9 @@
 # Cursor
 
+```youtube
+ZmbcZ_QfO6w
+```
+
 ## Configuração rápida
 
 Requer a [Coast CLI](../GETTING_STARTED.md). Copie este prompt para o chat do seu
@@ -169,6 +173,15 @@ api = "hot"
 - `.claude/worktrees/` — worktrees do Claude Code
 - `~/.codex/worktrees/` — worktrees do Codex
 - `~/.cursor/worktrees/my-app/` — worktrees do Cursor Parallel Agent
+
+## Troubleshooting
+
+- **Worktree not found** — Se o Coasts espera que um worktree exista, mas não consegue
+  encontrá-lo, verifique se o `worktree_dir` do Coastfile inclui
+  `~/.cursor/worktrees/<project-name>` e se `<project-name>` corresponde ao
+  nome real da pasta em `~/.cursor/worktrees/`. Veja
+  [Worktree Directories](../coastfiles/WORKTREE_DIR.md) para sintaxe e tipos
+  de caminho.
 
 ## Limitações
 

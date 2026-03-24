@@ -47,7 +47,7 @@ worktree_dir = ["/shared/worktrees", ".worktrees"]
 
 ### Padrões glob (externos)
 
-Caminhos externos podem conter metacaracteres glob (`*`, `?`, `[...]`). O Coast os expande em tempo de execução contra o sistema de arquivos do host, criando um bind mount para cada diretório correspondente.
+Caminhos externos podem conter metacaracteres glob (`*`, `?`, `[...]`).
 
 ```toml
 worktree_dir = [".worktrees", "~/.shep/repos/*/wt"]
@@ -62,9 +62,9 @@ Sintaxe glob suportada:
 - `[abc]` — corresponde a qualquer caractere do conjunto
 - `[!abc]` — corresponde a qualquer caractere que não esteja no conjunto
 
-A expansão de glob acontece em todos os lugares onde os diretórios de worktree são resolvidos: criação do contêiner, assign, start, lookup e o monitor do git. As correspondências são ordenadas para garantir uma ordem determinística. Se um glob não corresponder a nenhum diretório, ele será ignorado silenciosamente.
+O Coast monta a **raiz do glob** — o prefixo do diretório antes do primeiro componente com wildcard — em vez de cada correspondência individual. Para `~/.shep/repos/*/wt`, a raiz do glob é `~/.shep/repos/`. Isso significa que novos diretórios que aparecem após a criação do contêiner (por exemplo, um novo diretório de hash criado pelo Shep) ficam automaticamente acessíveis dentro do contêiner sem recriação. Assigns dinâmicos para worktrees sob novas correspondências de glob funcionam imediatamente.
 
-Como outros caminhos externos, o contêiner deve ser recriado (`coast run`) após adicionar um padrão glob para que o bind mount entre em vigor.
+Adicionar um *novo* padrão glob ao Coastfile ainda exige `coast run` para criar o bind mount. Mas, uma vez que o padrão exista, novos diretórios que correspondam a ele são detectados automaticamente.
 
 ## Como os diretórios externos funcionam
 

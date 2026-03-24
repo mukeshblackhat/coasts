@@ -1,5 +1,9 @@
 # Harnesses
 
+```youtube
+AWhaeam9R7o
+```
+
 每种 harness 都会在不同的位置创建 git worktree。在 Coasts 中，
 [`worktree_dir`](../coastfiles/WORKTREE_DIR.md) 数组会告诉它去哪里查找——
 包括像 `~/.codex/worktrees` 这样需要额外 bind mount 的外部路径。

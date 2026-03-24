@@ -105,6 +105,14 @@ api = "hot"
 - `~/.codex/worktrees/` — Codex (внешние, с bind mount)
 - `~/.t3/worktrees/my-app/` — T3 Code (внешние, с bind mount; замените `my-app` именем папки вашего репозитория)
 
+## Troubleshooting
+
+- **Worktree not found** — Если Coasts ожидает, что worktree существует, но не
+  может его найти, проверьте, что `worktree_dir` в Coastfile включает
+  `~/.t3/worktrees/<project-name>` и что `<project-name>` совпадает с
+  фактическим именем папки в `~/.t3/worktrees/`. Сведения о синтаксисе и типах
+  путей см. в [Worktree Directories](../coastfiles/WORKTREE_DIR.md).
+
 ## Limitations
 
 - Не полагайтесь на специфичные для T3 Code переменные окружения для

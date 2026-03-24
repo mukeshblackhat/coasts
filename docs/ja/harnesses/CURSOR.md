@@ -1,5 +1,9 @@
 # Cursor
 
+```youtube
+ZmbcZ_QfO6w
+```
+
 ## Quick setup
 
 [Coast CLI](../GETTING_STARTED.md) が必要です。Coasts を自動的にセットアップするには、このプロンプトをエージェントのチャットにコピーしてください:
@@ -151,6 +155,12 @@ api = "hot"
 - `.claude/worktrees/` — Claude Code の worktree
 - `~/.codex/worktrees/` — Codex の worktree
 - `~/.cursor/worktrees/my-app/` — Cursor Parallel Agent の worktree
+
+## Troubleshooting
+
+- **Worktree not found** — Coasts が worktree の存在を想定しているのに見つけられない場合は、Coastfile の `worktree_dir` に
+  `~/.cursor/worktrees/<project-name>` が含まれていること、および `<project-name>` が `~/.cursor/worktrees/` 配下の実際のフォルダ名と一致していることを確認してください。構文とパスの種類については
+  [Worktree Directories](../coastfiles/WORKTREE_DIR.md) を参照してください。
 
 ## Limitations
 
