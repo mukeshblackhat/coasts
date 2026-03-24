@@ -1709,6 +1709,28 @@ fn test_is_glob_pattern() {
 }
 
 #[test]
+fn test_glob_root_computation() {
+    use std::path::Path;
+
+    assert_eq!(
+        Coastfile::glob_root("/home/user/.shep/repos/*/wt"),
+        Path::new("/home/user/.shep/repos")
+    );
+    assert_eq!(Coastfile::glob_root("/foo/ba?/baz"), Path::new("/foo"));
+    assert_eq!(Coastfile::glob_root("/a/b/[abc]/c"), Path::new("/a/b"));
+    assert_eq!(
+        Coastfile::glob_root("/no/globs/here"),
+        Path::new("/no/globs/here"),
+        "path without globs returns the full path"
+    );
+    assert_eq!(
+        Coastfile::glob_root("/*/everything/is/glob"),
+        Path::new("/"),
+        "glob in first component returns root"
+    );
+}
+
+#[test]
 fn test_resolve_external_worktree_dirs_expanded_no_globs() {
     let dir = tempfile::tempdir().unwrap();
     let dirs = vec![".worktrees".to_string(), "~/.codex/worktrees".to_string()];
@@ -1719,38 +1741,44 @@ fn test_resolve_external_worktree_dirs_expanded_no_globs() {
 }
 
 #[test]
-fn test_resolve_external_worktree_dirs_expanded_glob_with_matches() {
+fn test_resolve_external_worktree_dirs_expanded_glob_returns_root() {
     let dir = tempfile::tempdir().unwrap();
     let ext = dir.path().join("ext");
     std::fs::create_dir_all(ext.join("aaa").join("wt")).unwrap();
     std::fs::create_dir_all(ext.join("bbb").join("wt")).unwrap();
-    std::fs::create_dir_all(ext.join("ccc")).unwrap(); // no "wt" subdir
+    std::fs::create_dir_all(ext.join("ccc")).unwrap();
 
     let pattern = format!("{}/*/wt", ext.display());
     let dirs = vec![".worktrees".to_string(), pattern.clone()];
     let result = Coastfile::resolve_external_worktree_dirs_expanded(&dirs, dir.path());
 
-    assert_eq!(result.len(), 2, "should match aaa/wt and bbb/wt");
     assert_eq!(
-        result[0].mount_index, 1,
-        "first match reuses original index"
+        result.len(),
+        1,
+        "glob should produce a single entry for the root"
     );
+    assert_eq!(result[0].mount_index, 1, "reuses original index");
     assert_eq!(
-        result[1].mount_index, 2,
-        "second match overflows to dirs.len()"
+        result[0].resolved_path, ext,
+        "resolved_path should be the glob root"
     );
-    assert!(result[0].resolved_path.ends_with("aaa/wt"));
-    assert!(result[1].resolved_path.ends_with("bbb/wt"));
     assert_eq!(result[0].raw_pattern, pattern);
 }
 
 #[test]
-fn test_resolve_external_worktree_dirs_expanded_glob_no_matches() {
+fn test_resolve_external_worktree_dirs_expanded_glob_no_matches_still_returns_root() {
     let dir = tempfile::tempdir().unwrap();
-    let pattern = format!("{}/nonexistent/*/wt", dir.path().display());
+    let base = dir.path().join("nonexistent");
+    let pattern = format!("{}/*/wt", base.display());
     let dirs = vec![".worktrees".to_string(), pattern];
     let result = Coastfile::resolve_external_worktree_dirs_expanded(&dirs, dir.path());
-    assert!(result.is_empty(), "no matches should produce empty result");
+    assert_eq!(
+        result.len(),
+        1,
+        "glob root should be returned even when nothing matches yet"
+    );
+    assert_eq!(result[0].resolved_path, base);
+    assert_eq!(result[0].mount_index, 1);
 }
 
 #[test]
@@ -1770,26 +1798,35 @@ fn test_resolve_external_worktree_dirs_expanded_preserves_non_glob_index() {
 
     assert_eq!(result.len(), 3);
     assert_eq!(result[0].mount_index, 1, "codex keeps index 1");
-    assert_eq!(result[1].mount_index, 2, "glob first match keeps index 2");
+    assert_eq!(result[1].mount_index, 2, "glob gets index 2");
+    assert_eq!(
+        result[1].resolved_path, ext,
+        "glob entry resolves to the glob root"
+    );
     assert_eq!(result[2].mount_index, 3, "literal keeps index 3");
 }
 
 #[test]
-fn test_resolve_external_worktree_dirs_expanded_sorted_deterministic() {
+fn test_resolve_external_worktree_dirs_expanded_glob_root_covers_future_dirs() {
     let dir = tempfile::tempdir().unwrap();
     let ext = dir.path().join("repos");
-    std::fs::create_dir_all(ext.join("zzz").join("wt")).unwrap();
     std::fs::create_dir_all(ext.join("aaa").join("wt")).unwrap();
-    std::fs::create_dir_all(ext.join("mmm").join("wt")).unwrap();
+    std::fs::create_dir_all(ext.join("bbb").join("wt")).unwrap();
 
     let pattern = format!("{}/*/wt", ext.display());
     let dirs = vec![pattern];
     let result = Coastfile::resolve_external_worktree_dirs_expanded(&dirs, dir.path());
 
-    assert_eq!(result.len(), 3);
-    assert!(result[0].resolved_path.ends_with("aaa/wt"), "sorted first");
-    assert!(result[1].resolved_path.ends_with("mmm/wt"), "sorted second");
-    assert!(result[2].resolved_path.ends_with("zzz/wt"), "sorted third");
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].resolved_path, ext);
+
+    // A new directory created after resolution is still under the glob root.
+    let future = ext.join("ccc").join("wt");
+    std::fs::create_dir_all(&future).unwrap();
+    assert!(
+        future.starts_with(&result[0].resolved_path),
+        "future directory should be covered by the glob root mount"
+    );
 }
 
 #[test]

@@ -768,18 +768,39 @@ impl Coastfile {
         dir.contains('*') || dir.contains('?') || dir.contains('[')
     }
 
-    /// Resolve all external worktree dirs, expanding glob patterns.
+    /// Extract the path prefix before the first component containing a glob
+    /// metacharacter. This is the deepest directory that is guaranteed to exist
+    /// regardless of which subdirectories match the pattern.
+    ///
+    /// ```text
+    /// /home/user/.shep/repos/*/wt  →  /home/user/.shep/repos
+    /// /foo/ba?/baz                 →  /foo
+    /// /a/b/[abc]/c                 →  /a/b
+    /// ```
+    pub fn glob_root(resolved: &str) -> PathBuf {
+        let path = Path::new(resolved);
+        let mut root = PathBuf::new();
+        for component in path.components() {
+            let s = component.as_os_str().to_string_lossy();
+            if s.contains('*') || s.contains('?') || s.contains('[') {
+                break;
+            }
+            root.push(component);
+        }
+        root
+    }
+
+    /// Resolve all external worktree dirs.
     ///
     /// Non-glob entries keep their original `worktree_dirs` index as the mount
-    /// index (backward compatible). For glob entries the first match reuses the
-    /// original index; additional matches are allocated sequentially starting
-    /// from `worktree_dirs.len()`.
+    /// index (backward compatible). Glob entries resolve to the **glob root**
+    /// (the path prefix before the first wildcard component) so the bind mount
+    /// covers all current *and future* matches without container recreation.
     pub fn resolve_external_worktree_dirs_expanded(
         worktree_dirs: &[String],
         project_root: &Path,
     ) -> Vec<ResolvedExternalDir> {
         let mut results = Vec::new();
-        let mut overflow_index = worktree_dirs.len();
 
         for (idx, dir) in worktree_dirs.iter().enumerate() {
             if !Self::is_external_worktree_dir(dir) {
@@ -789,28 +810,12 @@ impl Coastfile {
             let resolved_str = resolved.to_string_lossy().to_string();
 
             if Self::is_glob_pattern(&resolved_str) {
-                let mut matches: Vec<PathBuf> = glob::glob(&resolved_str)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(std::result::Result::ok)
-                    .filter(|p| p.is_dir())
-                    .collect();
-                matches.sort();
-
-                for (i, matched_path) in matches.into_iter().enumerate() {
-                    let mount_index = if i == 0 {
-                        idx
-                    } else {
-                        let mi = overflow_index;
-                        overflow_index += 1;
-                        mi
-                    };
-                    results.push(ResolvedExternalDir {
-                        mount_index,
-                        raw_pattern: dir.clone(),
-                        resolved_path: matched_path,
-                    });
-                }
+                let root = Self::glob_root(&resolved_str);
+                results.push(ResolvedExternalDir {
+                    mount_index: idx,
+                    raw_pattern: dir.clone(),
+                    resolved_path: root,
+                });
             } else {
                 results.push(ResolvedExternalDir {
                     mount_index: idx,

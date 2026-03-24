@@ -47,7 +47,7 @@ worktree_dir = ["/shared/worktrees", ".worktrees"]
 
 ### Glob patterns (external)
 
-External paths can contain glob metacharacters (`*`, `?`, `[...]`). Coast expands them at runtime against the host filesystem, creating a bind mount for each matching directory.
+External paths can contain glob metacharacters (`*`, `?`, `[...]`).
 
 ```toml
 worktree_dir = [".worktrees", "~/.shep/repos/*/wt"]
@@ -62,9 +62,9 @@ Supported glob syntax:
 - `[abc]` — matches any character in the set
 - `[!abc]` — matches any character not in the set
 
-Glob expansion happens everywhere worktree dirs are resolved: container creation, assign, start, lookup, and the git watcher. Matches are sorted for deterministic ordering. If a glob matches no directories, it is silently skipped.
+Coast mounts the **glob root** — the directory prefix before the first wildcard component — rather than each individual match. For `~/.shep/repos/*/wt`, the glob root is `~/.shep/repos/`. This means new directories that appear after container creation (e.g., a new hash directory created by Shep) are automatically accessible inside the container without recreation. Dynamic assigns to worktrees under new glob matches work immediately.
 
-Like other external paths, the container must be recreated (`coast run`) after adding a glob pattern for the bind mount to take effect.
+Adding a *new* glob pattern to the Coastfile still requires `coast run` to create the bind mount. But once the pattern exists, new directories matching it are picked up automatically.
 
 ## How external directories work
 

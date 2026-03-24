@@ -2143,4 +2143,32 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].branch_line, "detached");
     }
+
+    #[test]
+    fn test_match_porcelain_external_worktree_under_glob_root() {
+        let ext_dir = tempfile::tempdir().unwrap();
+        let ext_path = ext_dir.path().to_path_buf();
+
+        // Simulate a glob root at ext_path (e.g. ~/.shep/repos) with a
+        // worktree nested several levels deep (e.g. hash/wt/my-branch).
+        let wt = ext_path.join("a21f").join("wt").join("my-branch");
+        std::fs::create_dir_all(&wt).unwrap();
+
+        let porcelain = format!("worktree {}\nbranch refs/heads/my-branch\n\n", wt.display(),);
+
+        let external_dirs = vec![coast_core::coastfile::ResolvedExternalDir {
+            mount_index: 2,
+            raw_pattern: "~/.shep/repos/*/wt".to_string(),
+            resolved_path: ext_path,
+        }];
+
+        let loc = match_porcelain_to_external(&porcelain, "my-branch", &external_dirs);
+        assert!(loc.is_some(), "should match worktree under glob root");
+        let loc = loc.unwrap();
+        assert_eq!(
+            loc.container_mount_src,
+            format!("/host-external-wt/2/a21f/wt/my-branch"),
+            "mount source should include the full relative path from the glob root"
+        );
+    }
 }
