@@ -35,6 +35,30 @@ async fn revert_to_stopped(state: &AppState, project: &str, name: &str) {
 
 const TOTAL_START_STEPS: u32 = 4;
 
+/// Check whether the given instance status allows starting.
+///
+/// Returns `Ok(())` for `Stopped`, `Idle`, `Enqueued`, and `Unassigning`
+/// (statuses that the original code did not reject). Returns an error for
+/// `Running`/`CheckedOut` (already running) and transitional states
+/// (`Provisioning`, `Assigning`, `Starting`, `Stopping`).
+fn validate_startable(status: &InstanceStatus, name: &str) -> Result<()> {
+    match status {
+        InstanceStatus::Stopped
+        | InstanceStatus::Idle
+        | InstanceStatus::Enqueued
+        | InstanceStatus::Unassigning => Ok(()),
+        InstanceStatus::Running | InstanceStatus::CheckedOut => Err(CoastError::state(format!(
+            "Instance '{name}' is already running (status: {status}). Run `coast stop {name}` first if you want to restart it."
+        ))),
+        InstanceStatus::Provisioning
+        | InstanceStatus::Assigning
+        | InstanceStatus::Starting
+        | InstanceStatus::Stopping => Err(CoastError::state(format!(
+            "Instance '{name}' is currently {status}. Wait for the operation to complete."
+        ))),
+    }
+}
+
 /// Handle a start request with optional progress streaming.
 ///
 /// Steps:
@@ -61,22 +85,7 @@ pub async fn handle(
             name: req.name.clone(),
             project: req.project.clone(),
         })?;
-        if inst.status == InstanceStatus::Running || inst.status == InstanceStatus::CheckedOut {
-            return Err(CoastError::state(format!(
-                "Instance '{}' is already running (status: {}). Run `coast stop {}` first if you want to restart it.",
-                req.name, inst.status, req.name
-            )));
-        }
-        if inst.status == InstanceStatus::Provisioning
-            || inst.status == InstanceStatus::Assigning
-            || inst.status == InstanceStatus::Starting
-            || inst.status == InstanceStatus::Stopping
-        {
-            return Err(CoastError::state(format!(
-                "Instance '{}' is currently {}. Wait for the operation to complete.",
-                req.name, inst.status
-            )));
-        }
+        validate_startable(&inst.status, &req.name)?;
         db.update_instance_status(&req.project, &req.name, &InstanceStatus::Starting)?;
         inst
     };
@@ -665,5 +674,75 @@ mod tests {
         };
         let result = handle(req, &state, None).await.unwrap();
         assert_eq!(result.ports.len(), 2);
+    }
+
+    // --- validate_startable tests ---
+
+    #[test]
+    fn test_validate_startable_stopped_ok() {
+        assert!(validate_startable(&InstanceStatus::Stopped, "inst").is_ok());
+    }
+
+    #[test]
+    fn test_validate_startable_idle_ok() {
+        assert!(validate_startable(&InstanceStatus::Idle, "inst").is_ok());
+    }
+
+    #[test]
+    fn test_validate_startable_enqueued_ok() {
+        assert!(validate_startable(&InstanceStatus::Enqueued, "inst").is_ok());
+    }
+
+    #[test]
+    fn test_validate_startable_unassigning_ok() {
+        assert!(validate_startable(&InstanceStatus::Unassigning, "inst").is_ok());
+    }
+
+    #[test]
+    fn test_validate_startable_running_errors() {
+        let err = validate_startable(&InstanceStatus::Running, "inst")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("already running"));
+    }
+
+    #[test]
+    fn test_validate_startable_checked_out_errors() {
+        let err = validate_startable(&InstanceStatus::CheckedOut, "inst")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("already running"));
+    }
+
+    #[test]
+    fn test_validate_startable_provisioning_errors() {
+        let err = validate_startable(&InstanceStatus::Provisioning, "inst")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("currently"));
+    }
+
+    #[test]
+    fn test_validate_startable_assigning_errors() {
+        let err = validate_startable(&InstanceStatus::Assigning, "inst")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("currently"));
+    }
+
+    #[test]
+    fn test_validate_startable_starting_errors() {
+        let err = validate_startable(&InstanceStatus::Starting, "inst")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("currently"));
+    }
+
+    #[test]
+    fn test_validate_startable_stopping_errors() {
+        let err = validate_startable(&InstanceStatus::Stopping, "inst")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("currently"));
     }
 }
