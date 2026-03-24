@@ -59,6 +59,73 @@ fn validate_startable(status: &InstanceStatus, name: &str) -> Result<()> {
     }
 }
 
+/// Verify the inner Docker daemon is healthy by running `docker info` with a timeout.
+///
+/// On success, normalizes the Docker socket permissions. Returns an error
+/// with actionable guidance on failure or timeout.
+async fn verify_inner_daemon_health(
+    rt: &dyn Runtime,
+    container_id: &str,
+    name: &str,
+) -> Result<()> {
+    let health_timeout = tokio::time::Duration::from_secs(10);
+    let health_check = rt.exec_in_coast(container_id, &["docker", "info"]);
+    match tokio::time::timeout(health_timeout, health_check).await {
+        Ok(Ok(r)) if r.success() => {
+            info!("start: inner daemon healthy");
+            normalize_inner_docker_socket_permissions(rt, container_id).await;
+            Ok(())
+        }
+        Ok(Ok(r)) => Err(CoastError::docker(format!(
+            "Inner Docker daemon in instance '{name}' is not healthy (exit {}). \
+             Try `coast stop {name} && coast start {name}`.",
+            r.exit_code,
+        ))),
+        Ok(Err(e)) => Err(CoastError::docker(format!(
+            "Cannot reach inner Docker daemon in instance '{name}': {e}. \
+             Try `coast stop {name} && coast start {name}`.",
+        ))),
+        Err(_) => Err(CoastError::docker(format!(
+            "Inner Docker daemon in instance '{name}' is unresponsive (timed out after {}s). \
+             The DinD container may need to be recreated. Try `coast rm {name} && coast run {name}`.",
+            health_timeout.as_secs(),
+        ))),
+    }
+}
+
+/// Build the shell command to re-apply the `/workspace` bind mount.
+fn build_workspace_mount_command(mount_src: &str, symlink_fix: &str) -> String {
+    format!(
+        "mkdir -p /workspace && mount --bind {mount_src} /workspace && mount --make-rshared /workspace{symlink_fix}"
+    )
+}
+
+/// Check for bare services and start them if present.
+///
+/// Returns `true` if bare services were found and started, `false` otherwise.
+async fn start_bare_services_if_present(
+    rt: &dyn Runtime,
+    container_id: &str,
+    progress: &Option<tokio::sync::mpsc::Sender<BuildProgressEvent>>,
+) -> bool {
+    let has_svc =
+        match rt.exec_in_coast(container_id, &["test", "-d", crate::bare_services::SUPERVISOR_DIR]).await {
+            Ok(r) => r.success(),
+            Err(_) => false,
+        };
+    if has_svc {
+        let start_cmd = crate::bare_services::generate_start_command();
+        let _ = rt
+            .exec_in_coast(container_id, &["sh", "-c", &start_cmd])
+            .await;
+        emit(
+            progress,
+            BuildProgressEvent::item("Running compose up", "bare services started", "ok"),
+        );
+    }
+    has_svc
+}
+
 /// Handle a start request with optional progress streaming.
 ///
 /// Steps:
@@ -162,42 +229,14 @@ pub async fn handle(
             }
 
             let rt = coast_docker::dind::DindRuntime::with_client(docker.clone());
-            let health_timeout = tokio::time::Duration::from_secs(10);
-            let health_check = rt.exec_in_coast(container_id, &["docker", "info"]);
-            match tokio::time::timeout(health_timeout, health_check).await {
-                Ok(Ok(r)) if r.success() => {
-                    info!("start: inner daemon healthy");
-                    normalize_inner_docker_socket_permissions(docker, container_id).await;
-                    emit(
-                        &progress,
-                        BuildProgressEvent::item("Waiting for inner daemon", "docker info", "ok"),
-                    );
-                }
-                Ok(Ok(r)) => {
-                    revert_to_stopped(state, &req.project, &req.name).await;
-                    return Err(CoastError::docker(format!(
-                        "Inner Docker daemon in instance '{}' is not healthy (exit {}). \
-                         Try `coast stop {} && coast start {}`.",
-                        req.name, r.exit_code, req.name, req.name,
-                    )));
-                }
-                Ok(Err(e)) => {
-                    revert_to_stopped(state, &req.project, &req.name).await;
-                    return Err(CoastError::docker(format!(
-                        "Cannot reach inner Docker daemon in instance '{}': {e}. \
-                         Try `coast stop {} && coast start {}`.",
-                        req.name, req.name, req.name,
-                    )));
-                }
-                Err(_) => {
-                    revert_to_stopped(state, &req.project, &req.name).await;
-                    return Err(CoastError::docker(format!(
-                        "Inner Docker daemon in instance '{}' is unresponsive (timed out after {}s). \
-                         The DinD container may need to be recreated. Try `coast rm {} && coast run {}`.",
-                        req.name, health_timeout.as_secs(), req.name, req.name,
-                    )));
-                }
+            if let Err(e) = verify_inner_daemon_health(&rt, container_id, &req.name).await {
+                revert_to_stopped(state, &req.project, &req.name).await;
+                return Err(e);
             }
+            emit(
+                &progress,
+                BuildProgressEvent::item("Waiting for inner daemon", "docker info", "ok"),
+            );
 
             // Step 3: Start compose
             emit(
@@ -245,9 +284,7 @@ pub async fn handle(
                 } else {
                     String::new()
                 };
-                let mount_cmd = format!(
-                    "mkdir -p /workspace && mount --bind {mount_src} /workspace && mount --make-rshared /workspace{symlink_fix}"
-                );
+                let mount_cmd = build_workspace_mount_command(&mount_src, &symlink_fix);
                 let mount_result = mount_rt
                     .exec_in_coast(container_id, &["sh", "-c", &mount_cmd])
                     .await;
@@ -333,15 +370,11 @@ pub async fn handle(
                     health_cmd.iter().map(std::string::String::as_str).collect();
                 for _ in 0..30 {
                     let result = runtime2.exec_in_coast(container_id, &health_refs).await;
-                    if let Ok(exec_result) = result {
-                        if exec_result.success() && !exec_result.stdout.is_empty() {
-                            let all_running = exec_result
-                                .stdout
-                                .lines()
-                                .all(|line| line.contains("running") || line.contains("healthy"));
-                            if all_running {
-                                break;
-                            }
+                    if let Ok(ref exec_result) = result {
+                        if exec_result.success()
+                            && super::run::compose_ps_output_is_ready(&exec_result.stdout)
+                        {
+                            break;
                         }
                     }
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
@@ -353,18 +386,10 @@ pub async fn handle(
             }
 
             // Also start bare services (may coexist with compose)
-            let has_svc = crate::bare_services::has_bare_services(docker, container_id).await;
-            if has_svc {
-                let start_cmd = crate::bare_services::generate_start_command();
-                let svc_rt = coast_docker::dind::DindRuntime::with_client(docker.clone());
-                let _ = svc_rt
-                    .exec_in_coast(container_id, &["sh", "-c", &start_cmd])
-                    .await;
-                emit(
-                    &progress,
-                    BuildProgressEvent::item("Running compose up", "bare services started", "ok"),
-                );
-            } else if !project_has_compose {
+            let svc_rt = coast_docker::dind::DindRuntime::with_client(docker.clone());
+            let has_svc =
+                start_bare_services_if_present(&svc_rt, container_id, &progress).await;
+            if !has_svc && !project_has_compose {
                 emit(
                     &progress,
                     BuildProgressEvent::item("Running compose up", "no compose", "skip"),
@@ -393,8 +418,7 @@ pub async fn handle(
     })
 }
 
-async fn normalize_inner_docker_socket_permissions(docker: &bollard::Docker, container_id: &str) {
-    let runtime = coast_docker::dind::DindRuntime::with_client(docker.clone());
+async fn normalize_inner_docker_socket_permissions(rt: &dyn Runtime, container_id: &str) {
     let cmd = [
         "sh",
         "-c",
@@ -404,7 +428,7 @@ async fn normalize_inner_docker_socket_permissions(docker: &bollard::Docker, con
          done; \
          exit 1",
     ];
-    match runtime.exec_in_coast(container_id, &cmd).await {
+    match rt.exec_in_coast(container_id, &cmd).await {
         Ok(result) if result.success() => {}
         Ok(result) => {
             warn!(
@@ -552,7 +576,10 @@ fn find_external_wt_mount_src(
 mod tests {
     use super::*;
     use crate::state::StateDb;
+    use async_trait::async_trait;
     use coast_core::types::{CoastInstance, RuntimeType};
+    use coast_docker::runtime::{ContainerConfig, ExecResult};
+    use std::net::IpAddr;
 
     fn test_state() -> AppState {
         AppState::new_for_testing(StateDb::open_in_memory().unwrap())
@@ -744,5 +771,189 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("currently"));
+    }
+
+    // --- MockRuntime for testing extracted helpers ---
+
+    struct MockRuntime {
+        exec_results: std::sync::Mutex<Vec<Result<ExecResult>>>,
+    }
+
+    impl MockRuntime {
+        fn new() -> Self {
+            Self {
+                exec_results: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn push_exec_result(&self, result: Result<ExecResult>) {
+            self.exec_results.lock().unwrap().push(result);
+        }
+    }
+
+    #[async_trait]
+    impl Runtime for MockRuntime {
+        fn name(&self) -> &str {
+            "mock"
+        }
+
+        async fn create_coast_container(&self, _config: &ContainerConfig) -> Result<String> {
+            Ok("mock-id".to_string())
+        }
+
+        async fn start_coast_container(&self, _container_id: &str) -> Result<()> {
+            Ok(())
+        }
+
+        async fn stop_coast_container(&self, _container_id: &str) -> Result<()> {
+            Ok(())
+        }
+
+        async fn remove_coast_container(&self, _container_id: &str) -> Result<()> {
+            Ok(())
+        }
+
+        async fn exec_in_coast(
+            &self,
+            _container_id: &str,
+            _cmd: &[&str],
+        ) -> Result<ExecResult> {
+            let mut results = self.exec_results.lock().unwrap();
+            if results.is_empty() {
+                Ok(ExecResult {
+                    exit_code: 0,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                })
+            } else {
+                results.remove(0)
+            }
+        }
+
+        async fn get_container_ip(&self, _container_id: &str) -> Result<IpAddr> {
+            Ok("172.17.0.2".parse().unwrap())
+        }
+
+        fn requires_privileged(&self) -> bool {
+            false
+        }
+    }
+
+    // --- verify_inner_daemon_health tests ---
+
+    #[tokio::test]
+    async fn test_verify_inner_daemon_health_healthy() {
+        let rt = MockRuntime::new();
+        // docker info succeeds
+        rt.push_exec_result(Ok(ExecResult {
+            exit_code: 0,
+            stdout: "docker info output".to_string(),
+            stderr: String::new(),
+        }));
+        // normalize_inner_docker_socket_permissions exec
+        rt.push_exec_result(Ok(ExecResult {
+            exit_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        }));
+
+        let result = verify_inner_daemon_health(&rt, "ctr-1", "my-inst").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_verify_inner_daemon_health_unhealthy_exit() {
+        let rt = MockRuntime::new();
+        rt.push_exec_result(Ok(ExecResult {
+            exit_code: 1,
+            stdout: String::new(),
+            stderr: "daemon not running".to_string(),
+        }));
+
+        let result = verify_inner_daemon_health(&rt, "ctr-1", "my-inst").await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("not healthy"));
+        assert!(err.contains("my-inst"));
+    }
+
+    #[tokio::test]
+    async fn test_verify_inner_daemon_health_exec_error() {
+        let rt = MockRuntime::new();
+        rt.push_exec_result(Err(CoastError::docker("connection refused")));
+
+        let result = verify_inner_daemon_health(&rt, "ctr-1", "my-inst").await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Cannot reach"));
+        assert!(err.contains("my-inst"));
+    }
+
+    // --- build_workspace_mount_command tests ---
+
+    #[test]
+    fn test_build_workspace_mount_command_basic() {
+        let cmd = build_workspace_mount_command("/host-project", "");
+        assert_eq!(
+            cmd,
+            "mkdir -p /workspace && mount --bind /host-project /workspace && mount --make-rshared /workspace"
+        );
+    }
+
+    #[test]
+    fn test_build_workspace_mount_command_with_symlink_fix() {
+        let symlink_fix = " && mkdir -p '/home/user' && ln -sfn /host-project '/home/user/project'";
+        let cmd = build_workspace_mount_command("/host-project/.worktrees/feat", symlink_fix);
+        assert!(cmd.contains("mount --bind /host-project/.worktrees/feat /workspace"));
+        assert!(cmd.contains("mkdir -p '/home/user'"));
+        assert!(cmd.contains("ln -sfn /host-project '/home/user/project'"));
+    }
+
+    // --- start_bare_services_if_present tests ---
+
+    #[tokio::test]
+    async fn test_start_bare_services_present() {
+        let rt = MockRuntime::new();
+        // test -d /coast-supervisor succeeds
+        rt.push_exec_result(Ok(ExecResult {
+            exit_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        }));
+        // sh -c start-all.sh succeeds
+        rt.push_exec_result(Ok(ExecResult {
+            exit_code: 0,
+            stdout: "started".to_string(),
+            stderr: String::new(),
+        }));
+
+        let (tx, _rx) = tokio::sync::mpsc::channel(16);
+        let progress = Some(tx);
+        let has = start_bare_services_if_present(&rt, "ctr-1", &progress).await;
+        assert!(has);
+    }
+
+    #[tokio::test]
+    async fn test_start_bare_services_not_present() {
+        let rt = MockRuntime::new();
+        // test -d /coast-supervisor fails (no supervisor dir)
+        rt.push_exec_result(Ok(ExecResult {
+            exit_code: 1,
+            stdout: String::new(),
+            stderr: String::new(),
+        }));
+
+        let has = start_bare_services_if_present(&rt, "ctr-1", &None).await;
+        assert!(!has);
+    }
+
+    #[tokio::test]
+    async fn test_start_bare_services_exec_error_treated_as_absent() {
+        let rt = MockRuntime::new();
+        // test -d exec errors out entirely
+        rt.push_exec_result(Err(CoastError::docker("exec failed")));
+
+        let has = start_bare_services_if_present(&rt, "ctr-1", &None).await;
+        assert!(!has);
     }
 }
