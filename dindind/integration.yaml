@@ -40,12 +40,10 @@ tests:
     script: integrated-examples/test_coastfile_types.sh
     status: pass
     cached_seconds: 132
-  # --- verified failing ---
   test_lookup:
     script: integrated-examples/test_lookup.sh
-    status: fail
-    cached_seconds: 94
-    fail_at: "test 3: coast lookup --compact from worktree dir (10/10 prior assertions pass)"
+    status: pass
+    cached_seconds: 138
 
   # --- untested ---
   test_lifecycle:

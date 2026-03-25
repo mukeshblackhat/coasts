@@ -92,7 +92,7 @@ echo "=== Test 3: assign to feature-alpha, lookup from worktree ==="
 LS_OUT=$("$COAST" ls 2>&1)
 assert_contains "$LS_OUT" "feature-alpha" "coast ls shows feature-alpha after assign"
 
-cd .coasts/feature-alpha
+cd .worktrees/feature-alpha
 LOOKUP_OUT=$("$COAST" lookup --compact 2>&1)
 assert_eq "$LOOKUP_OUT" '["dev-1"]' "compact lookup from worktree returns dev-1"
 cd "$PROJECTS_DIR/coast-lookup"
@@ -128,7 +128,7 @@ LS_OUT=$("$COAST" ls 2>&1)
 # Both should show feature-alpha
 pass "dev-2 assigned to feature-alpha"
 
-cd .coasts/feature-alpha
+cd .worktrees/feature-alpha
 LOOKUP_OUT=$("$COAST" lookup --compact 2>&1)
 # Both names should be present (order may vary)
 assert_contains "$LOOKUP_OUT" "dev-1" "compact lookup contains dev-1"
@@ -142,7 +142,7 @@ cd "$PROJECTS_DIR/coast-lookup"
 echo ""
 echo "=== Test 6: JSON mode ==="
 
-cd .coasts/feature-alpha
+cd .worktrees/feature-alpha
 JSON_OUT=$("$COAST" lookup --json 2>&1)
 assert_contains "$JSON_OUT" '"worktree"' "JSON output has worktree field"
 assert_contains "$JSON_OUT" '"feature-alpha"' "JSON output contains feature-alpha"
@@ -158,7 +158,7 @@ cd "$PROJECTS_DIR/coast-lookup"
 echo ""
 echo "=== Test 7: default (human-readable) mode ==="
 
-cd .coasts/feature-alpha
+cd .worktrees/feature-alpha
 DEFAULT_OUT=$("$COAST" lookup 2>&1)
 assert_contains "$DEFAULT_OUT" "dev-1" "default output contains dev-1"
 assert_contains "$DEFAULT_OUT" "dev-2" "default output contains dev-2"
@@ -176,14 +176,14 @@ cd "$PROJECTS_DIR/coast-lookup"
 echo ""
 echo "=== Test 8: lookup from subdirectory of worktree ==="
 
-SUBDIR=".coasts/feature-alpha/subdir/nested"
+SUBDIR=".worktrees/feature-alpha/subdir/nested"
 mkdir -p "$SUBDIR"
 cd "$SUBDIR"
 LOOKUP_OUT=$("$COAST" lookup --compact 2>&1)
 assert_contains "$LOOKUP_OUT" "dev-1" "subdirectory lookup finds dev-1"
 assert_contains "$LOOKUP_OUT" "dev-2" "subdirectory lookup finds dev-2"
 cd "$PROJECTS_DIR/coast-lookup"
-rm -rf .coasts/feature-alpha/subdir
+rm -rf .worktrees/feature-alpha/subdir
 
 # ============================================================
 # Cleanup

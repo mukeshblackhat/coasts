@@ -89,9 +89,10 @@ set -euo pipefail
 
 # Copy source to a container-only path so we never write to the host mount.
 # target/ is a named volume that persists across runs for build caching.
+# Exclude .coasts/ dirs (stale worktree data from host runs with wrong absolute paths).
 echo "==> Copying project into container..."
 mkdir -p /workspace
-rsync -a --exclude target /coast-repo/ /workspace/
+rsync -a --exclude target --exclude .coasts --exclude .worktrees /coast-repo/ /workspace/
 cd /workspace
 
 echo "==> Building coast binaries (cargo build --release)..."
@@ -104,6 +105,11 @@ cargo build --release 2>&1
 
 # Skip auto-update (dev build flag)
 export COAST_HOME=/root/.coast
+
+# Clean stale state from previous test runs (the coast-home volume persists
+# instance records and container IDs that no longer exist in this container).
+rm -f /root/.coast/state.db /root/.coast/state.db-wal /root/.coast/state.db-shm
+rm -f /root/.coast/coastd.sock /root/.coast/coastd.pid
 
 # Install coast wrapper for egress forwarding in nested DinD.
 # Put the real binary and wrapper in /opt/coast/ -- never touch the cached
