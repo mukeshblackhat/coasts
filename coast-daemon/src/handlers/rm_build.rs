@@ -8,7 +8,10 @@ use coast_core::artifact::coast_home;
 use coast_core::error::{CoastError, Result};
 use coast_core::protocol::{BuildProgressEvent, CoastEvent, RmBuildRequest, RmBuildResponse};
 
+use coast_core::types::CoastInstance;
+
 use crate::server::AppState;
+use crate::state::StateDb;
 
 fn emit(
     progress: &Option<tokio::sync::mpsc::Sender<BuildProgressEvent>>,
@@ -20,7 +23,6 @@ fn emit(
 }
 
 /// Handle an rm-build request with optional streaming progress.
-#[allow(clippy::cognitive_complexity, clippy::too_many_lines)]
 pub async fn handle(
     req: RmBuildRequest,
     state: &AppState,
@@ -49,29 +51,7 @@ pub async fn handle(
     );
     {
         let db = state.db.lock().await;
-        let instances = db.list_instances_for_project(&req.project)?;
-        if !instances.is_empty() {
-            return Err(CoastError::state(format!(
-                "Cannot remove build for '{}': {} instance(s) still exist. \
-                 Run `coast rm --all --project {}` first.",
-                req.project,
-                instances.len(),
-                req.project,
-            )));
-        }
-        let shared = db.list_shared_services(Some(&req.project))?;
-        let running: Vec<_> = shared.iter().filter(|s| s.status == "running").collect();
-        if !running.is_empty() {
-            let names: Vec<&str> = running.iter().map(|s| s.service_name.as_str()).collect();
-            return Err(CoastError::state(format!(
-                "Cannot remove build for '{}': {} shared service(s) still running ({}). \
-                 Run `coast shared-services stop --all --project {}` first.",
-                req.project,
-                running.len(),
-                names.join(", "),
-                req.project,
-            )));
-        }
+        validate_removable(&db, &req.project)?;
     }
     emit(&progress, BuildProgressEvent::ok("Validating", 1, total));
 
@@ -82,72 +62,8 @@ pub async fn handle(
         build_ids: Vec::new(),
     });
 
-    let (containers_removed, volumes_removed, images_removed) = match &state.docker {
-        Some(docker) => {
-            emit(
-                &progress,
-                BuildProgressEvent::started("Removing containers", 2, total),
-            );
-            let c = remove_project_containers(docker, &project).await;
-            emit(
-                &progress,
-                BuildProgressEvent::ok_with_detail(
-                    "Removing containers",
-                    2,
-                    total,
-                    format!("{c} removed"),
-                ),
-            );
-
-            emit(
-                &progress,
-                BuildProgressEvent::started("Removing volumes", 3, total),
-            );
-            let v = remove_project_volumes(docker, &project).await;
-            emit(
-                &progress,
-                BuildProgressEvent::ok_with_detail(
-                    "Removing volumes",
-                    3,
-                    total,
-                    format!("{v} removed"),
-                ),
-            );
-
-            emit(
-                &progress,
-                BuildProgressEvent::started("Removing images", 4, total),
-            );
-            let i = remove_project_images(docker, &project).await;
-            emit(
-                &progress,
-                BuildProgressEvent::ok_with_detail(
-                    "Removing images",
-                    4,
-                    total,
-                    format!("{i} removed"),
-                ),
-            );
-
-            (c, v, i)
-        }
-        None => {
-            emit(
-                &progress,
-                BuildProgressEvent::skip("Removing containers", 2, total),
-            );
-            emit(
-                &progress,
-                BuildProgressEvent::skip("Removing volumes", 3, total),
-            );
-            emit(
-                &progress,
-                BuildProgressEvent::skip("Removing images", 4, total),
-            );
-            warn!("Docker client not available, skipping resource cleanup");
-            (0, 0, 0)
-        }
-    };
+    let (containers_removed, volumes_removed, images_removed) =
+        remove_docker_resources(state.docker.as_ref(), &project, &progress, total).await;
 
     emit(
         &progress,
@@ -194,7 +110,6 @@ pub async fn handle(
 }
 
 /// Remove specific builds by ID (just their directories and image tags).
-#[allow(clippy::cognitive_complexity)]
 async fn handle_remove_specific_builds(
     req: RmBuildRequest,
     state: &AppState,
@@ -224,25 +139,10 @@ async fn handle_remove_specific_builds(
         .ok()
         .and_then(|p| p.file_name().map(|f| f.to_string_lossy().into_owned()));
 
-    let in_use: std::collections::HashMap<String, Vec<String>> = {
+    let in_use = {
         let db = state.db.lock().await;
         let instances = db.list_instances_for_project(project).unwrap_or_default();
-        let mut map: std::collections::HashMap<String, Vec<String>> =
-            std::collections::HashMap::new();
-        let mut null_build_names: Vec<String> = Vec::new();
-        for inst in instances {
-            if let Some(bid) = inst.build_id {
-                map.entry(bid).or_default().push(inst.name);
-            } else {
-                null_build_names.push(inst.name);
-            }
-        }
-        if !null_build_names.is_empty() {
-            if let Some(ref lt) = latest_target {
-                map.entry(lt.clone()).or_default().extend(null_build_names);
-            }
-        }
-        map
+        build_in_use_map(&instances, latest_target.as_deref())
     };
     emit(
         &progress,
@@ -280,37 +180,12 @@ async fn handle_remove_specific_builds(
         );
 
         let is_latest = latest_target.as_deref() == Some(build_id.as_str());
-
-        let build_dir = project_dir.join(build_id);
-        if build_dir.exists() {
-            match std::fs::remove_dir_all(&build_dir) {
-                Ok(_) => {
-                    info!(build_id = %build_id, "removed build directory");
-                    builds_removed += 1;
-
-                    if is_latest {
-                        let symlink_path = project_dir.join("latest");
-                        if symlink_path.symlink_metadata().is_ok() {
-                            let _ = std::fs::remove_file(&symlink_path);
-                            info!("removed stale 'latest' symlink after deleting latest build");
-                        }
-                    }
-                }
-                Err(e) => {
-                    warn!(build_id = %build_id, error = %e, "failed to remove build directory");
-                }
-            }
+        if remove_build_dir(&project_dir, build_id, is_latest) {
+            builds_removed += 1;
         }
-
         if let Some(docker) = &state.docker {
-            let tag = format!("coast-image/{}:{}", project, build_id);
-            let rm_opts = bollard::image::RemoveImageOptions {
-                force: false,
-                noprune: false,
-            };
-            if docker.remove_image(&tag, Some(rm_opts), None).await.is_ok() {
+            if remove_build_image(docker, project, build_id).await {
                 images_removed += 1;
-                info!(tag = %tag, "removed Docker image tag");
             }
         }
 
@@ -333,6 +208,158 @@ async fn handle_remove_specific_builds(
         artifact_removed: false,
         builds_removed,
     })
+}
+
+/// Check that no instances or running shared services block build removal.
+fn validate_removable(db: &StateDb, project: &str) -> Result<()> {
+    let instances = db.list_instances_for_project(project)?;
+    if !instances.is_empty() {
+        return Err(CoastError::state(format!(
+            "Cannot remove build for '{}': {} instance(s) still exist. \
+             Run `coast rm --all --project {}` first.",
+            project,
+            instances.len(),
+            project,
+        )));
+    }
+    let shared = db.list_shared_services(Some(project))?;
+    let running: Vec<_> = shared.iter().filter(|s| s.status == "running").collect();
+    if !running.is_empty() {
+        let names: Vec<&str> = running.iter().map(|s| s.service_name.as_str()).collect();
+        return Err(CoastError::state(format!(
+            "Cannot remove build for '{}': {} shared service(s) still running ({}). \
+             Run `coast shared-services stop --all --project {}` first.",
+            project,
+            running.len(),
+            names.join(", "),
+            project,
+        )));
+    }
+    Ok(())
+}
+
+/// Build a map from build ID to the instance names using that build.
+///
+/// Instances without a `build_id` are attributed to `latest_target` (the
+/// symlink target of the "latest" alias) when present.
+fn build_in_use_map(
+    instances: &[CoastInstance],
+    latest_target: Option<&str>,
+) -> std::collections::HashMap<String, Vec<String>> {
+    let mut map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    let mut null_build_names: Vec<String> = Vec::new();
+    for inst in instances {
+        if let Some(ref bid) = inst.build_id {
+            map.entry(bid.clone()).or_default().push(inst.name.clone());
+        } else {
+            null_build_names.push(inst.name.clone());
+        }
+    }
+    if !null_build_names.is_empty() {
+        if let Some(lt) = latest_target {
+            map.entry(lt.to_string())
+                .or_default()
+                .extend(null_build_names);
+        }
+    }
+    map
+}
+
+/// Remove Docker containers, volumes, and images for a project, with progress.
+async fn remove_docker_resources(
+    docker: Option<&bollard::Docker>,
+    project: &str,
+    progress: &Option<tokio::sync::mpsc::Sender<BuildProgressEvent>>,
+    total: u32,
+) -> (usize, usize, usize) {
+    let Some(docker) = docker else {
+        emit(
+            progress,
+            BuildProgressEvent::skip("Removing containers", 2, total),
+        );
+        emit(
+            progress,
+            BuildProgressEvent::skip("Removing volumes", 3, total),
+        );
+        emit(
+            progress,
+            BuildProgressEvent::skip("Removing images", 4, total),
+        );
+        warn!("Docker client not available, skipping resource cleanup");
+        return (0, 0, 0);
+    };
+
+    emit(
+        progress,
+        BuildProgressEvent::started("Removing containers", 2, total),
+    );
+    let c = remove_project_containers(docker, project).await;
+    emit(
+        progress,
+        BuildProgressEvent::ok_with_detail("Removing containers", 2, total, format!("{c} removed")),
+    );
+
+    emit(
+        progress,
+        BuildProgressEvent::started("Removing volumes", 3, total),
+    );
+    let v = remove_project_volumes(docker, project).await;
+    emit(
+        progress,
+        BuildProgressEvent::ok_with_detail("Removing volumes", 3, total, format!("{v} removed")),
+    );
+
+    emit(
+        progress,
+        BuildProgressEvent::started("Removing images", 4, total),
+    );
+    let i = remove_project_images(docker, project).await;
+    emit(
+        progress,
+        BuildProgressEvent::ok_with_detail("Removing images", 4, total, format!("{i} removed")),
+    );
+
+    (c, v, i)
+}
+
+/// Remove a single build directory and clean up the "latest" symlink if needed.
+fn remove_build_dir(project_dir: &std::path::Path, build_id: &str, is_latest: bool) -> bool {
+    let build_dir = project_dir.join(build_id);
+    if !build_dir.exists() {
+        return false;
+    }
+    match std::fs::remove_dir_all(&build_dir) {
+        Ok(_) => {
+            info!(build_id = %build_id, "removed build directory");
+            if is_latest {
+                let symlink_path = project_dir.join("latest");
+                if symlink_path.symlink_metadata().is_ok() {
+                    let _ = std::fs::remove_file(&symlink_path);
+                    info!("removed stale 'latest' symlink after deleting latest build");
+                }
+            }
+            true
+        }
+        Err(e) => {
+            warn!(build_id = %build_id, error = %e, "failed to remove build directory");
+            false
+        }
+    }
+}
+
+/// Remove the Docker image tag for a specific build.
+async fn remove_build_image(docker: &bollard::Docker, project: &str, build_id: &str) -> bool {
+    let tag = format!("coast-image/{}:{}", project, build_id);
+    let rm_opts = bollard::image::RemoveImageOptions {
+        force: false,
+        noprune: false,
+    };
+    if docker.remove_image(&tag, Some(rm_opts), None).await.is_ok() {
+        info!(tag = %tag, "removed Docker image tag");
+        true
+    } else {
+        false
+    }
 }
 
 /// Remove all containers labelled with `coast.project={project}`.
@@ -515,6 +542,105 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
+    use crate::state::StateDb;
+    use coast_core::types::{CoastInstance, RuntimeType};
+
+    fn make_instance(name: &str, project: &str, build_id: Option<&str>) -> CoastInstance {
+        CoastInstance {
+            name: name.to_string(),
+            project: project.to_string(),
+            status: coast_core::types::InstanceStatus::Running,
+            branch: Some("main".to_string()),
+            commit_sha: None,
+            container_id: Some("container-123".to_string()),
+            runtime: RuntimeType::Dind,
+            created_at: chrono::Utc::now(),
+            worktree_name: None,
+            build_id: build_id.map(String::from),
+            coastfile_type: None,
+        }
+    }
+
+    // --- validate_removable tests ---
+
+    #[test]
+    fn test_validate_removable_no_instances_no_shared_services() {
+        let db = StateDb::open_in_memory().unwrap();
+        assert!(validate_removable(&db, "my-app").is_ok());
+    }
+
+    #[test]
+    fn test_validate_removable_instances_exist() {
+        let db = StateDb::open_in_memory().unwrap();
+        db.insert_instance(&make_instance("feat-a", "my-app", None))
+            .unwrap();
+        let err = validate_removable(&db, "my-app").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("instance(s) still exist"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_validate_removable_running_shared_services() {
+        let db = StateDb::open_in_memory().unwrap();
+        db.insert_shared_service("my-app", "redis", Some("cid"), "running")
+            .unwrap();
+        let err = validate_removable(&db, "my-app").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("shared service(s) still running"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_validate_removable_stopped_shared_services_ok() {
+        let db = StateDb::open_in_memory().unwrap();
+        db.insert_shared_service("my-app", "redis", None, "stopped")
+            .unwrap();
+        assert!(validate_removable(&db, "my-app").is_ok());
+    }
+
+    // --- build_in_use_map tests ---
+
+    #[test]
+    fn test_build_in_use_map_with_build_id() {
+        let instances = vec![make_instance("inst-a", "proj", Some("abc"))];
+        let map = build_in_use_map(&instances, None);
+        assert_eq!(map.get("abc").unwrap(), &vec!["inst-a".to_string()]);
+    }
+
+    #[test]
+    fn test_build_in_use_map_without_build_id_uses_latest() {
+        let instances = vec![make_instance("inst-a", "proj", None)];
+        let map = build_in_use_map(&instances, Some("xyz"));
+        assert_eq!(map.get("xyz").unwrap(), &vec!["inst-a".to_string()]);
+    }
+
+    #[test]
+    fn test_build_in_use_map_without_build_id_no_latest() {
+        let instances = vec![make_instance("inst-a", "proj", None)];
+        let map = build_in_use_map(&instances, None);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn test_build_in_use_map_multiple_instances_same_build() {
+        let instances = vec![
+            make_instance("inst-a", "proj", Some("abc")),
+            make_instance("inst-b", "proj", Some("abc")),
+        ];
+        let map = build_in_use_map(&instances, None);
+        let mut names = map.get("abc").unwrap().clone();
+        names.sort();
+        assert_eq!(names, vec!["inst-a".to_string(), "inst-b".to_string()]);
+    }
+
+    #[test]
+    fn test_build_in_use_map_empty_instances() {
+        let map = build_in_use_map(&[], None);
+        assert!(map.is_empty());
+    }
+
     // --- volume_belongs_to_project tests ---
 
     #[test]
@@ -632,5 +758,62 @@ mod tests {
             "coast-image/my-app:abc123".to_string(),
         ];
         assert!(image_matches_project(&tags, "my-app"));
+    }
+
+    // --- remove_build_dir tests ---
+
+    #[test]
+    fn test_remove_build_dir_removes_existing_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project_dir = tmp.path();
+        let build_dir = project_dir.join("abc123");
+        std::fs::create_dir_all(&build_dir).unwrap();
+        std::fs::write(build_dir.join("file.txt"), "data").unwrap();
+
+        assert!(remove_build_dir(project_dir, "abc123", false));
+        assert!(!build_dir.exists());
+    }
+
+    #[test]
+    fn test_remove_build_dir_nonexistent_returns_false() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(!remove_build_dir(tmp.path(), "no-such-build", false));
+    }
+
+    #[test]
+    fn test_remove_build_dir_cleans_latest_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project_dir = tmp.path();
+        let build_dir = project_dir.join("abc123");
+        std::fs::create_dir_all(&build_dir).unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("abc123", project_dir.join("latest")).unwrap();
+
+        assert!(remove_build_dir(project_dir, "abc123", true));
+        assert!(!build_dir.exists());
+        #[cfg(unix)]
+        assert!(
+            !project_dir.join("latest").symlink_metadata().is_ok(),
+            "latest symlink should be removed"
+        );
+    }
+
+    #[test]
+    fn test_remove_build_dir_not_latest_keeps_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project_dir = tmp.path();
+        let build_dir = project_dir.join("old-build");
+        std::fs::create_dir_all(&build_dir).unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("current-build", project_dir.join("latest")).unwrap();
+
+        assert!(remove_build_dir(project_dir, "old-build", false));
+        #[cfg(unix)]
+        assert!(
+            project_dir.join("latest").symlink_metadata().is_ok(),
+            "latest symlink should be kept for non-latest builds"
+        );
     }
 }
