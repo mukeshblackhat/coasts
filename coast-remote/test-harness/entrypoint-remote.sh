@@ -25,13 +25,22 @@ mkdir -p /root/.ssh
 if [ -f /ssh-keys/id_ed25519 ]; then
     cp /ssh-keys/id_ed25519 /root/.ssh/id_ed25519
     chmod 600 /root/.ssh/id_ed25519
-    # Trust all hosts (test environment only)
     echo "StrictHostKeyChecking no" > /root/.ssh/config
     echo "UserKnownHostsFile /dev/null" >> /root/.ssh/config
     echo "LogLevel ERROR" >> /root/.ssh/config
 fi
 
-# Pre-pull images that tests will use
+# Wait for SSH server on local-machine to be ready and accepting key auth
+echo "==> Waiting for local-machine SSH..."
+for i in $(seq 1 30); do
+    if ssh -o ConnectTimeout=2 -o BatchMode=yes testuser@local-machine "echo ok" 2>/dev/null; then
+        echo "==> SSH to local-machine works (${i}s)"
+        break
+    fi
+    sleep 1
+done
+
+# Pre-pull alpine image for tests
 echo "==> Pre-pulling alpine image for tests..."
 docker pull alpine:latest
 

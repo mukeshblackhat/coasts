@@ -24,6 +24,9 @@ services:
     hostname: local-machine
     volumes:
       - ssh-keys:/ssh-keys:ro
+    depends_on:
+      ssh-keygen:
+        condition: service_completed_successfully
     networks:
       - coast-test
 

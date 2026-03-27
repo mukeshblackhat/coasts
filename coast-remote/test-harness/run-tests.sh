@@ -22,6 +22,35 @@ fail() {
     echo "    → $2"
 }
 
+# curl wrapper that shows errors instead of swallowing them
+api_get() {
+    local resp
+    resp=$(curl -s --max-time 10 "$REMOTE/api/v1$1" 2>&1)
+    local code=$?
+    if [ $code -ne 0 ]; then
+        echo "CURL_ERROR: exit=$code resp=$resp" >&2
+        echo ""
+        return 1
+    fi
+    echo "$resp"
+}
+
+api_post() {
+    local path="$1"
+    local body="$2"
+    local resp
+    resp=$(curl -s --max-time 30 -X POST "$REMOTE/api/v1$path" \
+        -H "Content-Type: application/json" \
+        -d "$body" 2>&1)
+    local code=$?
+    if [ $code -ne 0 ]; then
+        echo "CURL_ERROR: exit=$code resp=$resp" >&2
+        echo ""
+        return 1
+    fi
+    echo "$resp"
+}
+
 wait_for_service() {
     local url="$1"
     local name="$2"
@@ -29,7 +58,7 @@ wait_for_service() {
 
     echo "⏳ Waiting for $name..."
     for i in $(seq 1 $max_wait); do
-        if curl -sf "$url" >/dev/null 2>&1; then
+        if curl -sf --max-time 3 "$url" >/dev/null 2>&1; then
             echo "  $name is ready (${i}s)"
             return 0
         fi
@@ -40,9 +69,6 @@ wait_for_service() {
 }
 
 ###############################################################################
-# Wait for services
-###############################################################################
-
 echo ""
 echo "════════════════════════════════════════════════════════"
 echo "  Coast Remote POC — Test Suite"
@@ -58,9 +84,9 @@ wait_for_service "$REMOTE/api/v1/health" "coast-remote"
 echo ""
 echo "── Test 1: Health check ──"
 
-HEALTH=$(curl -sf "$REMOTE/api/v1/health")
-STATUS=$(echo "$HEALTH" | jq -r '.status')
-DOCKER=$(echo "$HEALTH" | jq -r '.docker')
+HEALTH=$(api_get "/health")
+STATUS=$(echo "$HEALTH" | jq -r '.status' 2>/dev/null)
+DOCKER=$(echo "$HEALTH" | jq -r '.docker' 2>/dev/null)
 
 if [ "$STATUS" = "ok" ] && [ "$DOCKER" = "connected" ]; then
     pass "health endpoint returns ok + docker connected"
@@ -75,16 +101,14 @@ fi
 echo ""
 echo "── Test 2: SSHFS mount ──"
 
-MOUNT_RESP=$(curl -sf -X POST "$REMOTE/api/v1/mount" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "project": "testapp",
-        "ssh_target": "testuser@local-machine",
-        "remote_path": "/home/testuser/project"
-    }')
+MOUNT_RESP=$(api_post "/mount" '{
+    "project": "testapp",
+    "ssh_target": "testuser@local-machine",
+    "remote_path": "/home/testuser/project"
+}')
 
-MOUNT_STATUS=$(echo "$MOUNT_RESP" | jq -r '.status')
-MOUNT_PATH=$(echo "$MOUNT_RESP" | jq -r '.mount_path')
+MOUNT_STATUS=$(echo "$MOUNT_RESP" | jq -r '.status' 2>/dev/null)
+MOUNT_PATH=$(echo "$MOUNT_RESP" | jq -r '.mount_path' 2>/dev/null)
 
 if [ "$MOUNT_STATUS" = "mounted" ]; then
     pass "SSHFS mount succeeded (path: $MOUNT_PATH)"
@@ -92,46 +116,42 @@ else
     fail "SSHFS mount" "got: $MOUNT_RESP"
 fi
 
-# Verify mount shows up in the list
-MOUNTS=$(curl -sf "$REMOTE/api/v1/mounts")
-MOUNT_COUNT=$(echo "$MOUNTS" | jq '.mounts | length')
+MOUNTS=$(api_get "/mounts")
+MOUNT_COUNT=$(echo "$MOUNTS" | jq '.mounts | length' 2>/dev/null)
 
-if [ "$MOUNT_COUNT" -ge 1 ]; then
+if [ "$MOUNT_COUNT" -ge 1 ] 2>/dev/null; then
     pass "mount appears in /mounts list"
 else
     fail "mount listing" "got: $MOUNTS"
 fi
 
 ###############################################################################
-# Test 3: Run a container (using alpine — fast to pull)
+# Test 3: Run a container
 ###############################################################################
 
 echo ""
 echo "── Test 3: Run container ──"
 
-# Use alpine:latest with a long-running command so the container stays alive
-RUN_RESP=$(curl -sf -X POST "$REMOTE/api/v1/container/run" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "config": {
-            "project": "testapp",
-            "instance_name": "dev-1",
-            "image": "alpine:latest",
-            "env_vars": {},
-            "bind_mounts": [],
-            "volume_mounts": [],
-            "tmpfs_mounts": [],
-            "networks": [],
-            "working_dir": null,
-            "entrypoint": null,
-            "cmd": ["sleep", "300"],
-            "labels": {},
-            "published_ports": [],
-            "extra_hosts": []
-        }
-    }')
+RUN_RESP=$(api_post "/container/run" '{
+    "config": {
+        "project": "testapp",
+        "instance_name": "dev-1",
+        "image": "alpine:latest",
+        "env_vars": {},
+        "bind_mounts": [],
+        "volume_mounts": [],
+        "tmpfs_mounts": [],
+        "networks": [],
+        "working_dir": null,
+        "entrypoint": null,
+        "cmd": ["sleep", "300"],
+        "labels": {},
+        "published_ports": [],
+        "extra_hosts": []
+    }
+}')
 
-CONTAINER_ID=$(echo "$RUN_RESP" | jq -r '.container_id')
+CONTAINER_ID=$(echo "$RUN_RESP" | jq -r '.container_id' 2>/dev/null)
 
 if [ -n "$CONTAINER_ID" ] && [ "$CONTAINER_ID" != "null" ]; then
     pass "container created (id: ${CONTAINER_ID:0:12}...)"
@@ -140,7 +160,18 @@ else
 fi
 
 # Wait for container to fully start
+echo "  waiting 5s for container to settle..."
 sleep 5
+
+# Verify coast-remote is still reachable after container creation
+echo "  checking coast-remote is still alive..."
+HEALTH2=$(api_get "/health")
+H2_STATUS=$(echo "$HEALTH2" | jq -r '.status' 2>/dev/null)
+if [ "$H2_STATUS" = "ok" ]; then
+    echo "  coast-remote still healthy"
+else
+    echo "  WARNING: coast-remote may be down: $HEALTH2"
+fi
 
 ###############################################################################
 # Test 4: Status shows container
@@ -149,13 +180,14 @@ sleep 5
 echo ""
 echo "── Test 4: Status endpoint ──"
 
-STATUS_RESP=$(curl -sf "$REMOTE/api/v1/status")
-CONTAINER_COUNT=$(echo "$STATUS_RESP" | jq '.containers | length')
+STATUS_RESP=$(api_get "/status")
+echo "  raw response: $STATUS_RESP"
+CONTAINER_COUNT=$(echo "$STATUS_RESP" | jq '.containers | length' 2>/dev/null)
 
-if [ "$CONTAINER_COUNT" -ge 1 ]; then
+if [ "$CONTAINER_COUNT" -ge 1 ] 2>/dev/null; then
     pass "status shows $CONTAINER_COUNT container(s)"
 else
-    fail "status" "got: $STATUS_RESP"
+    fail "status" "count=$CONTAINER_COUNT got: $STATUS_RESP"
 fi
 
 ###############################################################################
@@ -165,12 +197,12 @@ fi
 echo ""
 echo "── Test 5: Exec (verify SSHFS files in container) ──"
 
-EXEC_RESP=$(curl -sf -X POST "$REMOTE/api/v1/container/exec" \
-    -H "Content-Type: application/json" \
-    -d '{"project":"testapp","instance":"dev-1","cmd":["ls","/host-project"]}')
+EXEC_RESP=$(api_post "/container/exec" \
+    '{"project":"testapp","instance":"dev-1","cmd":["ls","/host-project"]}')
 
-EXEC_STDOUT=$(echo "$EXEC_RESP" | jq -r '.stdout')
-EXEC_CODE=$(echo "$EXEC_RESP" | jq -r '.exit_code')
+echo "  raw exec response: $EXEC_RESP"
+EXEC_STDOUT=$(echo "$EXEC_RESP" | jq -r '.stdout' 2>/dev/null)
+EXEC_CODE=$(echo "$EXEC_RESP" | jq -r '.exit_code' 2>/dev/null)
 
 if [ "$EXEC_CODE" = "0" ] && echo "$EXEC_STDOUT" | grep -q "package.json"; then
     pass "project files visible inside container (found package.json)"
@@ -178,12 +210,10 @@ else
     fail "exec ls /host-project" "exit_code=$EXEC_CODE stdout=$EXEC_STDOUT"
 fi
 
-# Check specific file content
-EXEC_RESP2=$(curl -sf -X POST "$REMOTE/api/v1/container/exec" \
-    -H "Content-Type: application/json" \
-    -d '{"project":"testapp","instance":"dev-1","cmd":["cat","/host-project/index.js"]}')
+EXEC_RESP2=$(api_post "/container/exec" \
+    '{"project":"testapp","instance":"dev-1","cmd":["cat","/host-project/index.js"]}')
 
-EXEC_STDOUT2=$(echo "$EXEC_RESP2" | jq -r '.stdout')
+EXEC_STDOUT2=$(echo "$EXEC_RESP2" | jq -r '.stdout' 2>/dev/null)
 
 if echo "$EXEC_STDOUT2" | grep -q "hello from coast remote POC"; then
     pass "file content matches (index.js)"
@@ -198,11 +228,10 @@ fi
 echo ""
 echo "── Test 6: Container IP ──"
 
-IP_RESP=$(curl -sf -X POST "$REMOTE/api/v1/container/ip" \
-    -H "Content-Type: application/json" \
-    -d '{"project":"testapp","instance":"dev-1"}')
+IP_RESP=$(api_post "/container/ip" \
+    '{"project":"testapp","instance":"dev-1"}')
 
-IP=$(echo "$IP_RESP" | jq -r '.ip')
+IP=$(echo "$IP_RESP" | jq -r '.ip' 2>/dev/null)
 
 if echo "$IP" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
     pass "got container IP: $IP"
@@ -217,11 +246,10 @@ fi
 echo ""
 echo "── Test 7: Stop container ──"
 
-STOP_RESP=$(curl -sf -X POST "$REMOTE/api/v1/container/stop" \
-    -H "Content-Type: application/json" \
-    -d '{"project":"testapp","instance":"dev-1"}')
+STOP_RESP=$(api_post "/container/stop" \
+    '{"project":"testapp","instance":"dev-1"}')
 
-STOP_STATUS=$(echo "$STOP_RESP" | jq -r '.status')
+STOP_STATUS=$(echo "$STOP_RESP" | jq -r '.status' 2>/dev/null)
 
 if [ "$STOP_STATUS" = "stopped" ]; then
     pass "container stopped"
@@ -236,11 +264,10 @@ fi
 echo ""
 echo "── Test 8: Remove container ──"
 
-RM_RESP=$(curl -sf -X POST "$REMOTE/api/v1/container/rm" \
-    -H "Content-Type: application/json" \
-    -d '{"project":"testapp","instance":"dev-1"}')
+RM_RESP=$(api_post "/container/rm" \
+    '{"project":"testapp","instance":"dev-1"}')
 
-RM_STATUS=$(echo "$RM_RESP" | jq -r '.status')
+RM_STATUS=$(echo "$RM_RESP" | jq -r '.status' 2>/dev/null)
 
 if [ "$RM_STATUS" = "removed" ]; then
     pass "container removed"
@@ -248,11 +275,10 @@ else
     fail "remove" "got: $RM_RESP"
 fi
 
-# Verify it's gone from status
-STATUS_AFTER=$(curl -sf "$REMOTE/api/v1/status")
-CONTAINERS_AFTER=$(echo "$STATUS_AFTER" | jq '.containers | length')
+STATUS_AFTER=$(api_get "/status")
+CONTAINERS_AFTER=$(echo "$STATUS_AFTER" | jq '.containers | length' 2>/dev/null)
 
-if [ "$CONTAINERS_AFTER" = "0" ]; then
+if [ "$CONTAINERS_AFTER" = "0" ] 2>/dev/null; then
     pass "status shows 0 containers after removal"
 else
     fail "post-removal status" "still shows $CONTAINERS_AFTER containers"
@@ -265,11 +291,9 @@ fi
 echo ""
 echo "── Test 9: Unmount SSHFS ──"
 
-UNMOUNT_RESP=$(curl -sf -X POST "$REMOTE/api/v1/unmount" \
-    -H "Content-Type: application/json" \
-    -d '{"project":"testapp"}')
+UNMOUNT_RESP=$(api_post "/unmount" '{"project":"testapp"}')
 
-UNMOUNT_STATUS=$(echo "$UNMOUNT_RESP" | jq -r '.status')
+UNMOUNT_STATUS=$(echo "$UNMOUNT_RESP" | jq -r '.status' 2>/dev/null)
 
 if [ "$UNMOUNT_STATUS" = "unmounted" ]; then
     pass "SSHFS unmounted"

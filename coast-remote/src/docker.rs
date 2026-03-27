@@ -250,6 +250,7 @@ pub async fn exec_in_container(
 }
 
 /// Get container IP address on the bridge network.
+/// Checks both the top-level IPAddress and per-network IPs (needed for DinD).
 pub async fn get_container_ip(
     state: &RemoteState,
     container_id: &str,
@@ -260,14 +261,26 @@ pub async fn get_container_ip(
         .await
         .map_err(|e| anyhow::anyhow!("inspect failed: {e}"))?;
 
-    let ip = info
-        .network_settings
-        .and_then(|ns| ns.ip_address)
-        .unwrap_or_default();
+    let ns = info.network_settings
+        .ok_or_else(|| anyhow::anyhow!("no network settings"))?;
 
-    if ip.is_empty() {
-        anyhow::bail!("container has no IP address");
+    // Try top-level IPAddress first
+    if let Some(ref ip) = ns.ip_address {
+        if !ip.is_empty() {
+            return Ok(ip.clone());
+        }
     }
 
-    Ok(ip)
+    // Fallback: check per-network IPs (e.g. bridge network)
+    if let Some(ref networks) = ns.networks {
+        for (_name, network) in networks {
+            if let Some(ref ip) = network.ip_address {
+                if !ip.is_empty() {
+                    return Ok(ip.clone());
+                }
+            }
+        }
+    }
+
+    anyhow::bail!("container has no IP address")
 }
