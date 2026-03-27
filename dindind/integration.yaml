@@ -54,8 +54,12 @@ tests:
     script: integrated-examples/test_checkout.sh
   test_secrets:
     script: integrated-examples/test_secrets.sh
+    status: pass
+    cached_seconds: 82
   test_observability:
     script: integrated-examples/test_observability.sh
+    status: pass
+    cached_seconds: 78
   test_multi_project:
     script: integrated-examples/test_multi_project.sh
     status: pass
