@@ -1,0 +1,8 @@
+target/
+.git/
+lcov.info
+.env
+integrated-examples/
+.dindind-image-cache/
+coast-guard/
+memory/

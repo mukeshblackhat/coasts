@@ -496,6 +496,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "hex",
+ "reqwest",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -527,6 +528,29 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "coast-remote"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "bollard",
+ "bytes",
+ "clap",
+ "coast-core",
+ "coast-docker",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

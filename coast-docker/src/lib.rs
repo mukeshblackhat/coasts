@@ -11,5 +11,7 @@ pub mod host;
 pub mod image_cache;
 pub mod network;
 pub mod podman;
+#[cfg(feature = "remote")]
+pub mod remote;
 pub mod runtime;
 pub mod sysbox;

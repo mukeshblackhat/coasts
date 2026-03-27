@@ -19,6 +19,12 @@ hex = { workspace = true }
 futures-util = { workspace = true }
 serde_yaml = { workspace = true }
 
+reqwest = { workspace = true, optional = true }
+
+[features]
+default = []
+remote = ["reqwest"]
+
 [lints]
 workspace = true
 

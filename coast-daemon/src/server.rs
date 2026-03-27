@@ -181,6 +181,9 @@ pub struct AppState {
     pub update_quiescing: Arc<AtomicBool>,
     /// Explicit registry of currently active mutating operations.
     pub active_update_operations: Arc<std::sync::Mutex<HashMap<uuid::Uuid, ActiveUpdateOperation>>>,
+    /// Optional remote runtime for offloading Docker to a remote machine.
+    /// Set when COAST_REMOTE_HOST env var is present.
+    pub remote_runtime: Option<coast_docker::remote::RemoteRuntime>,
 }
 
 impl AppState {
@@ -211,6 +214,12 @@ impl AppState {
             tokio::sync::watch::channel(analytics_initial);
         let analytics_client = analytics::spawn_worker(anonymous_id, analytics_enabled_rx);
 
+        // Check if a remote Docker host is configured
+        let remote_runtime = std::env::var("COAST_REMOTE_HOST").ok().map(|url| {
+            info!(url = %url, "remote Docker runtime configured");
+            coast_docker::remote::RemoteRuntime::new(&url)
+        });
+
         Self {
             db: Mutex::new(db),
             docker,
@@ -235,6 +244,7 @@ impl AppState {
             analytics_enabled_tx,
             update_quiescing: Arc::new(AtomicBool::new(false)),
             active_update_operations: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            remote_runtime,
         }
     }
 
@@ -270,6 +280,7 @@ impl AppState {
             analytics_enabled_tx,
             update_quiescing: Arc::new(AtomicBool::new(false)),
             active_update_operations: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            remote_runtime: None,
         }
     }
 
@@ -366,6 +377,11 @@ impl AppState {
     /// Get the current display language.
     pub fn language(&self) -> String {
         self.language_rx.borrow().clone()
+    }
+
+    /// Check if the daemon is configured to use a remote Docker runtime.
+    pub fn is_remote(&self) -> bool {
+        self.remote_runtime.is_some()
     }
 }
 

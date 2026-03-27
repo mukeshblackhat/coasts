@@ -1,0 +1,86 @@
+###############################################################################
+# Coast Remote POC — Test Harness
+#
+# Simulates a two-machine setup with three containers:
+#   local   — the developer's machine (SSH server + project files)
+#   remote  — the remote Docker host (coast-remote + Docker daemon + SSHFS)
+#   test    — runs the automated test script against the setup
+#
+# Usage:
+#   cd coast-remote/test-harness
+#   ./run-test.sh
+#
+# Or manually:
+#   docker compose up --build --abort-on-container-exit
+###############################################################################
+
+services:
+  # Simulates the developer's local machine.
+  # Runs an SSH server so the "remote" can SSHFS-mount project files.
+  local:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    hostname: local-machine
+    volumes:
+      - ssh-keys:/ssh-keys:ro
+    networks:
+      - coast-test
+
+  # Generates a shared SSH keypair used by remote → local.
+  # Runs once, writes keys to the shared volume, then exits.
+  ssh-keygen:
+    image: debian:bookworm-slim
+    command: >
+      bash -c "
+        if [ ! -f /ssh-keys/id_ed25519 ]; then
+          apt-get update && apt-get install -y --no-install-recommends openssh-client &&
+          ssh-keygen -t ed25519 -f /ssh-keys/id_ed25519 -N '' -q &&
+          chmod 644 /ssh-keys/id_ed25519.pub &&
+          chmod 600 /ssh-keys/id_ed25519 &&
+          echo 'SSH keys generated'
+        else
+          echo 'SSH keys already exist'
+        fi
+      "
+    volumes:
+      - ssh-keys:/ssh-keys
+
+  # Simulates the remote Docker host.
+  # Runs coast-remote with Docker daemon + SSHFS support.
+  remote:
+    build:
+      context: ../..
+      dockerfile: coast-remote/Dockerfile
+    hostname: remote-machine
+    privileged: true
+    volumes:
+      - ssh-keys:/ssh-keys:ro
+    depends_on:
+      ssh-keygen:
+        condition: service_completed_successfully
+      local:
+        condition: service_started
+    networks:
+      - coast-test
+
+  # Runs the automated test script.
+  # Waits for coast-remote to be healthy, then runs all tests.
+  test:
+    image: debian:bookworm-slim
+    command: bash /test/run-tests.sh
+    volumes:
+      - ./run-tests.sh:/test/run-tests.sh:ro
+    depends_on:
+      remote:
+        condition: service_started
+      local:
+        condition: service_started
+    networks:
+      - coast-test
+
+volumes:
+  ssh-keys:
+
+networks:
+  coast-test:
