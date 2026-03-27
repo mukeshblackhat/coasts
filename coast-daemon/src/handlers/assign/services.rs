@@ -1178,34 +1178,32 @@ async fn compose_force_recreate(
     .await;
 }
 
-#[allow(clippy::cognitive_complexity)]
 async fn compose_down_up(
     rt: &coast_docker::dind::DindRuntime,
     container_id: &str,
     ctx: &crate::handlers::ComposeContext,
 ) {
-    let step_t = std::time::Instant::now();
     let down_cmd = ctx.compose_shell("down --remove-orphans -t 2");
     let down_refs: Vec<&str> = down_cmd.iter().map(std::string::String::as_str).collect();
-    let _ = rt.exec_in_coast(container_id, &down_refs).await;
-    info!(
-        elapsed_ms = step_t.elapsed().as_millis() as u64,
-        "compose down completed after workspace remount"
-    );
+    exec_and_log(
+        rt,
+        container_id,
+        &down_refs,
+        "compose down completed after workspace remount",
+        "compose down after workspace remount had issues",
+    )
+    .await;
 
     let up_cmd = ctx.compose_shell("up -d --remove-orphans");
     let up_refs: Vec<&str> = up_cmd.iter().map(std::string::String::as_str).collect();
-    let up_result = rt.exec_in_coast(container_id, &up_refs).await;
-    match &up_result {
-        Ok(r) if r.success() => info!(
-            elapsed_ms = step_t.elapsed().as_millis() as u64,
-            "compose up completed after workspace remount"
-        ),
-        Ok(r) => {
-            tracing::warn!(stderr = %r.stderr, "compose up after workspace remount had issues")
-        }
-        Err(e) => tracing::warn!(error = %e, "compose up after workspace remount failed"),
-    }
+    exec_and_log(
+        rt,
+        container_id,
+        &up_refs,
+        "compose up completed after workspace remount",
+        "compose up after workspace remount had issues",
+    )
+    .await;
 }
 
 fn resolve_coastfile_path(project: &str, build_id: Option<&str>) -> std::path::PathBuf {
@@ -1228,7 +1226,6 @@ fn resolve_coastfile_path(project: &str, build_id: Option<&str>) -> std::path::P
         })
 }
 
-#[allow(clippy::cognitive_complexity)]
 async fn restart_bare_services(
     rt: &coast_docker::dind::DindRuntime,
     container_id: &str,
@@ -1241,41 +1238,35 @@ async fn restart_bare_services(
         .unwrap_or_default();
 
     if let Some(save_cmd) = crate::bare_services::generate_cache_save_command(&svc_list) {
-        let step_t = std::time::Instant::now();
-        let _ = rt
-            .exec_in_coast(container_id, &["sh", "-c", &save_cmd])
-            .await;
-        info!(
-            elapsed_ms = step_t.elapsed().as_millis() as u64,
-            "bare services cache saved"
-        );
+        exec_and_log(
+            rt,
+            container_id,
+            &["sh", "-c", &save_cmd],
+            "bare services cache saved",
+            "bare services cache save failed",
+        )
+        .await;
     }
 
-    let step_t = std::time::Instant::now();
     let stop_cmd = crate::bare_services::generate_stop_command();
-    let _ = rt
-        .exec_in_coast(container_id, &["sh", "-c", &stop_cmd])
-        .await;
-    info!(
-        elapsed_ms = step_t.elapsed().as_millis() as u64,
-        "bare services stopped for branch switch"
-    );
+    exec_and_log(
+        rt,
+        container_id,
+        &["sh", "-c", &stop_cmd],
+        "bare services stopped for branch switch",
+        "bare services stop failed",
+    )
+    .await;
 
     let start_cmd = crate::bare_services::generate_install_and_start_command(&svc_list);
-    let step_t = std::time::Instant::now();
-    let start_result = rt
-        .exec_in_coast(container_id, &["sh", "-c", &start_cmd])
-        .await;
-    match &start_result {
-        Ok(r) if r.success() => info!(
-            elapsed_ms = step_t.elapsed().as_millis() as u64,
-            "bare services install + start completed after branch switch"
-        ),
-        Ok(r) => {
-            tracing::warn!(stderr = %r.stderr, "bare services install after branch switch had issues")
-        }
-        Err(e) => tracing::warn!(error = %e, "bare services install after branch switch failed"),
-    }
+    exec_and_log(
+        rt,
+        container_id,
+        &["sh", "-c", &start_cmd],
+        "bare services install + start completed after branch switch",
+        "bare services install after branch switch had issues",
+    )
+    .await;
 }
 
 // ---------------------------------------------------------------------------
