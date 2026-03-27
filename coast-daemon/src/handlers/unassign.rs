@@ -14,6 +14,32 @@ use coast_docker::runtime::Runtime;
 
 use crate::server::AppState;
 
+/// Validate that an instance can be unassigned.
+///
+/// Returns `Ok(())` for statuses where `can_assign()` returns true: `Running`,
+/// `CheckedOut`, `Idle`, `Assigning`, and `Unassigning`. Returns an error for
+/// `Stopped` (needs start first) and other transitional states (`Provisioning`,
+/// `Starting`, `Stopping`, `Enqueued`).
+fn validate_unassignable(status: &InstanceStatus, name: &str) -> Result<()> {
+    match status {
+        InstanceStatus::Running
+        | InstanceStatus::CheckedOut
+        | InstanceStatus::Idle
+        | InstanceStatus::Assigning
+        | InstanceStatus::Unassigning => Ok(()),
+        InstanceStatus::Stopped => Err(CoastError::state(format!(
+            "Instance '{name}' is stopped (status: {status}). \
+             Run `coast start {name}` to start it first."
+        ))),
+        InstanceStatus::Provisioning
+        | InstanceStatus::Starting
+        | InstanceStatus::Stopping
+        | InstanceStatus::Enqueued => Err(CoastError::state(format!(
+            "Instance '{name}' is currently {status}. Wait for the operation to complete."
+        ))),
+    }
+}
+
 /// Read the current branch of a project root (for display only).
 async fn read_host_branch(project_root: &Path) -> Option<String> {
     tokio::process::Command::new("git")
@@ -79,19 +105,7 @@ pub async fn handle(
             }
         })?;
 
-        if inst.status == InstanceStatus::Stopped {
-            return Err(CoastError::state(format!(
-                "Instance '{}' is stopped (status: {}). \
-                 Run `coast start {}` to start it first.",
-                req.name, inst.status, req.name,
-            )));
-        }
-        if !inst.status.can_assign() {
-            return Err(CoastError::state(format!(
-                "Instance '{}' is currently {}. Wait for the operation to complete.",
-                req.name, inst.status
-            )));
-        }
+        validate_unassignable(&inst.status, &req.name)?;
 
         db.update_instance_status(&req.project, &req.name, &InstanceStatus::Unassigning)?;
         inst
@@ -537,5 +551,87 @@ mod tests {
         let db = state.db.lock().await;
         let inst = db.get_instance("proj", "dev-1").unwrap().unwrap();
         assert_eq!(inst.status, InstanceStatus::CheckedOut);
+    }
+
+    // --- validate_unassignable tests ---
+
+    #[test]
+    fn test_validate_unassignable_running_ok() {
+        assert!(validate_unassignable(&InstanceStatus::Running, "inst").is_ok());
+    }
+
+    #[test]
+    fn test_validate_unassignable_checked_out_ok() {
+        assert!(validate_unassignable(&InstanceStatus::CheckedOut, "inst").is_ok());
+    }
+
+    #[test]
+    fn test_validate_unassignable_idle_ok() {
+        assert!(validate_unassignable(&InstanceStatus::Idle, "inst").is_ok());
+    }
+
+    #[test]
+    fn test_validate_unassignable_assigning_ok() {
+        assert!(validate_unassignable(&InstanceStatus::Assigning, "inst").is_ok());
+    }
+
+    #[test]
+    fn test_validate_unassignable_unassigning_ok() {
+        assert!(validate_unassignable(&InstanceStatus::Unassigning, "inst").is_ok());
+    }
+
+    #[test]
+    fn test_validate_unassignable_stopped_errors() {
+        let err = validate_unassignable(&InstanceStatus::Stopped, "inst")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("stopped"),
+            "error should mention 'stopped': {err}"
+        );
+    }
+
+    #[test]
+    fn test_validate_unassignable_provisioning_errors() {
+        let err = validate_unassignable(&InstanceStatus::Provisioning, "inst")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("currently"),
+            "error should mention 'currently': {err}"
+        );
+    }
+
+    #[test]
+    fn test_validate_unassignable_starting_errors() {
+        let err = validate_unassignable(&InstanceStatus::Starting, "inst")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("currently"),
+            "error should mention 'currently': {err}"
+        );
+    }
+
+    #[test]
+    fn test_validate_unassignable_stopping_errors() {
+        let err = validate_unassignable(&InstanceStatus::Stopping, "inst")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("currently"),
+            "error should mention 'currently': {err}"
+        );
+    }
+
+    #[test]
+    fn test_validate_unassignable_enqueued_errors() {
+        let err = validate_unassignable(&InstanceStatus::Enqueued, "inst")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("currently"),
+            "error should mention 'currently': {err}"
+        );
     }
 }
