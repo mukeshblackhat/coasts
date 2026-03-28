@@ -62,7 +62,7 @@ pub async fn handle_mount(
         .arg(&sshfs_source)
         .arg(&mount_path)
         .arg("-o")
-        .arg("reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,follow_symlinks,allow_other,StrictHostKeyChecking=no,UserKnownHostsFile=/dev/null")
+        .arg("reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,follow_symlinks,allow_other,idmap=user,StrictHostKeyChecking=no,UserKnownHostsFile=/dev/null")
         .output()
         .await
         .map_err(|e| {

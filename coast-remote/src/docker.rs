@@ -33,11 +33,12 @@ pub async fn create_and_start(
     // exists() can return false for FUSE mounts in some environments.
     let is_mounted = state.mounts.lock().await.contains_key(&config.project);
     if is_mounted || workspace.exists() {
+        // Use :slave propagation so FUSE/SSHFS mounts are visible inside the container
         binds.push(format!(
-            "{}:/host-project",
+            "{}:/host-project:slave",
             workspace.to_string_lossy()
         ));
-        info!(path = %workspace.display(), "mounting project dir as /host-project");
+        info!(path = %workspace.display(), "mounting project dir as /host-project (slave propagation)");
     } else {
         info!(path = %workspace.display(), "no SSHFS mount found — container will have no project files");
     }

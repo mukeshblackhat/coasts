@@ -40,6 +40,10 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
+# Make /mnt/coast a shared mount so SSHFS mounts propagate into Docker containers
+echo "==> Setting up mount propagation for /mnt/coast..."
+mount --make-shared /mnt/coast 2>/dev/null || true
+
 # Pre-pull alpine image for tests
 echo "==> Pre-pulling alpine image for tests..."
 docker pull alpine:latest
