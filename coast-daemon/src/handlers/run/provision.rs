@@ -924,8 +924,7 @@ async fn bind_workspace(
 ) {
     let private_cmds =
         coast_core::coastfile::Coastfile::build_private_paths_mount_commands(private_paths);
-    let cache_cmds =
-        coast_core::coastfile::Coastfile::build_cache_mount_commands(bare_services);
+    let cache_cmds = coast_core::coastfile::Coastfile::build_cache_mount_commands(bare_services);
     let cmd = format!(
         "mkdir -p /workspace && mount --bind /host-project /workspace && mount --make-rshared /workspace{private_cmds}{cache_cmds}"
     );

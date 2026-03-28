@@ -173,9 +173,7 @@ fn stop_all_script(services: &[BareServiceConfig]) -> String {
     // (e.g. Next.js spawned by yarn) that survived PID/pkill are cleaned up.
     for svc in services {
         if let Some(port) = svc.port {
-            script.push_str(&format!(
-                "fuser -k {port}/tcp 2>/dev/null || true\n"
-            ));
+            script.push_str(&format!("fuser -k {port}/tcp 2>/dev/null || true\n"));
         }
     }
     script.push_str("echo \"[coast-supervisor] all services stopped\"\n");
@@ -650,8 +648,12 @@ mod tests {
     fn test_install_and_start_command_no_install() {
         let svc = test_svc("web", "npm run dev", RestartPolicy::No);
         let cmd = generate_install_and_start_command(&[svc]);
-        assert!(!cmd.contains("install.log"));
+        assert!(
+            !cmd.contains(") >> "),
+            "should not have install step redirects when no install commands configured"
+        );
         assert!(cmd.contains("start-all.sh"));
+        assert!(cmd.contains("stop-all.sh"), "should regenerate stop script");
     }
 
     #[test]
@@ -675,14 +677,8 @@ mod tests {
             !cmd.contains("cp -al"),
             "should not contain cp -al (cache is bind-mounted, not copied)"
         );
-        assert!(
-            cmd.contains("npm install"),
-            "should contain install step"
-        );
-        assert!(
-            cmd.contains("start-all.sh"),
-            "should contain start step"
-        );
+        assert!(cmd.contains("npm install"), "should contain install step");
+        assert!(cmd.contains("start-all.sh"), "should contain start step");
     }
 
     #[test]

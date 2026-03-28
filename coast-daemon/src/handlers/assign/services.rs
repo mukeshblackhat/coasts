@@ -1133,8 +1133,7 @@ async fn remount_workspace(
         coast_core::coastfile::Coastfile::build_private_paths_clear_commands(private_paths);
     let private_cmds =
         coast_core::coastfile::Coastfile::build_private_paths_mount_commands(private_paths);
-    let cache_cmds =
-        coast_core::coastfile::Coastfile::build_cache_mount_commands(bare_services);
+    let cache_cmds = coast_core::coastfile::Coastfile::build_cache_mount_commands(bare_services);
     let mount_cmd = format!(
         "{unmount_cache}{unmount_private}{clear_private}umount -l /workspace 2>/dev/null; mount --bind {mount_src} /workspace && \
          mount --make-rshared /workspace && \

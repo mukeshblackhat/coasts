@@ -211,10 +211,9 @@ pub async fn handle(
             coast_core::coastfile::Coastfile::build_private_paths_unmount_commands(
                 &cf_data.private_paths,
             );
-        let clear_private =
-            coast_core::coastfile::Coastfile::build_private_paths_clear_commands(
-                &cf_data.private_paths,
-            );
+        let clear_private = coast_core::coastfile::Coastfile::build_private_paths_clear_commands(
+            &cf_data.private_paths,
+        );
         let private_cmds = coast_core::coastfile::Coastfile::build_private_paths_mount_commands(
             &cf_data.private_paths,
         );
@@ -293,10 +292,8 @@ pub async fn handle(
                 }
             }
 
-            let cf_path = super::artifact_coastfile_path(
-                &req.project,
-                instance.build_id.as_deref(),
-            );
+            let cf_path =
+                super::artifact_coastfile_path(&req.project, instance.build_id.as_deref());
             let svc_list = coast_core::coastfile::Coastfile::from_file(&cf_path)
                 .map(|cf| cf.services)
                 .unwrap_or_default();

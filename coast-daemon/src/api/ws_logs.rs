@@ -111,8 +111,8 @@ async fn handle_logs_socket(
     let cmd_parts = if has_bare && has_compose && params.service.is_none() {
         // Mixed mode, no service filter: merge both log streams in parallel
         let bare_cmd = crate::bare_services::generate_logs_command(None, None, false, true);
-        let compose_script = compose_context(&params.project)
-            .compose_script("logs --tail 200 --follow");
+        let compose_script =
+            compose_context(&params.project).compose_script("logs --tail 200 --follow");
         vec![
             "sh".to_string(),
             "-c".to_string(),
@@ -129,12 +129,8 @@ async fn handle_logs_socket(
             .map(|r| r.success())
             .unwrap_or(false);
         if is_bare_svc {
-            let tail_cmd = crate::bare_services::generate_logs_command(
-                Some(service),
-                None,
-                false,
-                true,
-            );
+            let tail_cmd =
+                crate::bare_services::generate_logs_command(Some(service), None, false, true);
             vec!["sh".to_string(), "-c".to_string(), tail_cmd]
         } else {
             let ctx = compose_context(&params.project);

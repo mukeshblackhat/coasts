@@ -673,11 +673,7 @@ impl Coastfile {
                 if !seen.insert(dir.clone()) {
                     continue;
                 }
-                let is_shared = services
-                    .iter()
-                    .filter(|s| s.cache.contains(dir))
-                    .count()
-                    > 1;
+                let is_shared = services.iter().filter(|s| s.cache.contains(dir)).count() > 1;
                 let cache = if is_shared {
                     format!("/coast-cache/_shared/{dir}")
                 } else {
@@ -725,9 +721,7 @@ impl Coastfile {
         }
         let cmds: Vec<String> = private_paths
             .iter()
-            .map(|p| {
-                format!("umount -l '/workspace/{p}' 2>/dev/null || true")
-            })
+            .map(|p| format!("umount -l '/workspace/{p}' 2>/dev/null || true"))
             .collect();
         format!("{}; ", cmds.join("; "))
     }
