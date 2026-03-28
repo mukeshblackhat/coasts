@@ -50,7 +50,7 @@ Private path mounts are applied at every point in the Coast lifecycle where `/wo
 3. **`coast assign`** — after unmounting and rebinding `/workspace` to a worktree directory.
 4. **`coast unassign`** — after reverting `/workspace` back to the project root.
 
-The private directories persist across stop/start cycles (they live on the container's filesystem, not on the shared mount). On `coast rm`, they are destroyed along with the container.
+The private directories persist across stop/start cycles (they live on the container's filesystem, not on the shared mount). On `coast assign` or `coast unassign`, private directories are **cleared** so that dev servers recompile from the correct branch's source files rather than serving stale build output from a previous branch. On `coast rm`, they are destroyed along with the container.
 
 ## When to Use It
 

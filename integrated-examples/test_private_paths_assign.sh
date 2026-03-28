@@ -94,16 +94,23 @@ pass "assigned to feature-v2"
 sleep 5
 
 # ============================================================
-# Test 4: Verify private_paths overlay survived assign
+# Test 4: Verify private_paths are cleared on assign (fresh per-branch)
 # ============================================================
 
 echo ""
-echo "=== Test 4: Verify private_paths overlay after assign ==="
+echo "=== Test 4: Verify private_paths cleared after assign ==="
 
-# The marker should still be there (private_paths data persists per-instance)
-MARKER_AFTER=$($COAST exec dev-1 -- cat /workspace/data/marker 2>&1) \
-    || fail "failed to read marker after assign"
-assert_contains "$MARKER_AFTER" "pre-assign" "private data persists across assign"
+# The marker should be gone -- private_paths are cleared on assign to prevent
+# stale build caches (e.g. .next) from serving wrong-branch content.
+MARKER_AFTER=$($COAST exec dev-1 -- cat /workspace/data/marker 2>&1) && {
+    fail "marker should not survive assign (private_paths should be cleared)"
+}
+pass "private_paths cleared on assign (marker gone)"
+
+# Write a fresh marker in the new branch's private dir
+$COAST exec dev-1 -- sh -c "echo post-assign > /workspace/data/marker" 2>&1 \
+    || fail "failed to write marker after assign"
+pass "wrote fresh marker after assign"
 
 # ============================================================
 # Test 5: Verify bare service restarted with feature-v2 AND holds flock
@@ -134,15 +141,17 @@ pass "unassigned back to main"
 sleep 8
 
 # ============================================================
-# Test 7: Verify private_paths overlay survived unassign
+# Test 7: Verify private_paths cleared on unassign
 # ============================================================
 
 echo ""
-echo "=== Test 7: Verify private_paths overlay after unassign ==="
+echo "=== Test 7: Verify private_paths cleared after unassign ==="
 
-MARKER_UNASSIGN=$($COAST exec dev-1 -- cat /workspace/data/marker 2>&1) \
-    || fail "failed to read marker after unassign"
-assert_contains "$MARKER_UNASSIGN" "pre-assign" "private data persists across unassign"
+# The post-assign marker should be gone -- cleared again on unassign
+MARKER_UNASSIGN=$($COAST exec dev-1 -- cat /workspace/data/marker 2>&1) && {
+    fail "marker should not survive unassign (private_paths should be cleared)"
+}
+pass "private_paths cleared on unassign (marker gone)"
 
 # ============================================================
 # Test 8: Verify bare service restarted with main code AND holds flock
