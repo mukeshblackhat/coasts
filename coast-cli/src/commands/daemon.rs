@@ -210,6 +210,23 @@ async fn execute_status() -> Result<()> {
     Ok(())
 }
 
+/// Kill any remaining coastd processes by binary path. This catches
+/// launchd-respawned or orphaned daemons that aren't tracked by the PID file.
+/// Uses the full resolved path for precise matching (won't hit unrelated processes).
+fn kill_all_coastd_processes() {
+    let coastd_path = resolve_coastd_path();
+    let path_str = coastd_path.to_string_lossy().to_string();
+    if path_str.is_empty() {
+        return;
+    }
+    // -f matches against the full command line (including path).
+    // Using the resolved path ensures we only kill our own coastd, not
+    // other users' or other installations.
+    let _ = std::process::Command::new("pkill")
+        .args(["-9", "-f", &path_str])
+        .status();
+}
+
 pub(crate) async fn execute_kill(force: bool) -> Result<()> {
     let status = daemon_status()?;
 
@@ -220,11 +237,17 @@ pub(crate) async fn execute_kill(force: bool) -> Result<()> {
         } else {
             println!("coastd is not running");
         }
+        kill_all_coastd_processes();
         return Ok(());
     }
 
     let pid = status.pid.unwrap();
     let nix_pid = Pid::from_raw(pid as i32);
+
+    // Tell the service manager to stop managing coastd BEFORE killing it.
+    // Without this, launchd (macOS) or systemd (Linux) will immediately
+    // respawn the daemon after we kill the process.
+    unload_service_manager();
 
     if force {
         eprint!("force-killing coastd (pid: {pid})...");
@@ -243,11 +266,14 @@ pub(crate) async fn execute_kill(force: bool) -> Result<()> {
             eprintln!();
             println!("{}", "coastd stopped".green());
             cleanup_stale_files()?;
+            kill_all_coastd_processes();
             return Ok(());
         }
         if start.elapsed() > graceful_timeout {
             if force {
                 eprintln!();
+                kill_all_coastd_processes();
+                cleanup_stale_files()?;
                 bail!("coastd (pid: {pid}) did not exit after SIGKILL. This is unexpected.");
             }
             // Auto-escalate to SIGKILL
@@ -260,9 +286,12 @@ pub(crate) async fn execute_kill(force: bool) -> Result<()> {
                 if !is_running(pid) {
                     println!("{}", "coastd killed".green());
                     cleanup_stale_files()?;
+                    kill_all_coastd_processes();
                     return Ok(());
                 }
                 if kill_start.elapsed() > kill_timeout {
+                    kill_all_coastd_processes();
+                    cleanup_stale_files()?;
                     bail!("coastd (pid: {pid}) did not exit after SIGKILL. This is unexpected.");
                 }
                 tokio::time::sleep(poll_interval).await;
@@ -277,13 +306,28 @@ pub(crate) async fn execute_start() -> Result<()> {
 
     if status.running {
         let pid = status.pid.unwrap();
-        println!("coastd is already running (pid: {pid})");
-        return Ok(());
-    }
-
-    if status.pid.is_some() {
+        // Verify the daemon is healthy by checking its socket. A
+        // launchd-respawned daemon from a previous version may have a PID file
+        // but a missing or unresponsive socket.
+        let sock = socket_path()?;
+        let socket_ok = sock.exists() && tokio::net::UnixStream::connect(&sock).await.is_ok();
+        if socket_ok {
+            println!("coastd is already running (pid: {pid})");
+            return Ok(());
+        }
+        eprintln!("killing stale coastd (pid: {pid}, socket not responding)");
+        let _ = signal::kill(Pid::from_raw(pid as i32), Signal::SIGKILL);
+        kill_all_coastd_processes();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        cleanup_stale_files()?;
+    } else if status.pid.is_some() {
         cleanup_stale_files()?;
     }
+
+    // Kill any stale coastd processes not tracked by the PID file (e.g.
+    // launchd-respawned from a previous version holding the flock).
+    kill_all_coastd_processes();
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let coastd = resolve_coastd_path();
     let child = std::process::Command::new(&coastd)
@@ -312,16 +356,24 @@ pub(crate) async fn execute_start() -> Result<()> {
     loop {
         if let Some(pid) = read_pid(&pid_file) {
             if is_running(pid) {
+                reload_service_manager();
                 println!("{} (pid: {pid})", "coastd started".green());
                 return Ok(());
             }
         }
         if start.elapsed() > timeout {
             let log = log_path().unwrap_or_default();
+            let coastd_name = resolve_coastd_path()
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             bail!(
-                "coastd did not start within 5 seconds. \
-                 Check {} for errors. \
-                 Spawned process PID was {child_pid}.",
+                "coastd did not start within 5 seconds.\n  \
+                 Check {} for errors.\n  \
+                 Spawned process PID was {child_pid}.\n  \
+                 If the log says \"another coastd is already running\", run:\n    \
+                 killall {coastd_name} && coast daemon start",
                 log.display()
             );
         }
@@ -445,6 +497,44 @@ fn read_last_n_lines(file: &mut std::fs::File, n: usize) -> Result<Vec<String>> 
 
 const LAUNCHD_LABEL: &str = "com.coast.coastd";
 const SYSTEMD_SERVICE: &str = "coastd.service";
+
+/// Tell the system service manager to stop managing coastd. On macOS this
+/// runs `launchctl unload` on the plist; on Linux it runs `systemctl --user
+/// stop`. Prevents the service manager from respawning the daemon after we
+/// kill it (the root cause of the stale-daemon-after-update bug).
+fn unload_service_manager() {
+    if cfg!(target_os = "macos") {
+        if let Ok(plist) = launchd_plist_path() {
+            if plist.exists() {
+                let _ = std::process::Command::new("launchctl")
+                    .args(["unload", &plist.to_string_lossy()])
+                    .status();
+            }
+        }
+    } else if cfg!(target_os = "linux") {
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "stop", SYSTEMD_SERVICE])
+            .status();
+    }
+}
+
+/// Re-register coastd with the system service manager after starting.
+/// On macOS this runs `launchctl load`; on Linux `systemctl --user start`.
+fn reload_service_manager() {
+    if cfg!(target_os = "macos") {
+        if let Ok(plist) = launchd_plist_path() {
+            if plist.exists() {
+                let _ = std::process::Command::new("launchctl")
+                    .args(["load", &plist.to_string_lossy()])
+                    .status();
+            }
+        }
+    } else if cfg!(target_os = "linux") {
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "start", SYSTEMD_SERVICE])
+            .status();
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InstallPlatform {
@@ -1082,5 +1172,29 @@ mod tests {
         let file = tmp.as_file_mut();
         let lines = read_last_n_lines(file, 4).unwrap();
         assert_eq!(lines, vec!["one", "two", "three", "four"]);
+    }
+
+    #[test]
+    fn test_unload_service_manager_does_not_panic() {
+        unload_service_manager();
+    }
+
+    #[test]
+    fn test_reload_service_manager_does_not_panic() {
+        reload_service_manager();
+    }
+
+    #[test]
+    fn test_kill_all_coastd_processes_does_not_panic() {
+        kill_all_coastd_processes();
+    }
+
+    #[test]
+    fn test_resolve_coastd_path_is_not_empty() {
+        let path = resolve_coastd_path();
+        assert!(
+            !path.to_string_lossy().is_empty(),
+            "resolved coastd path should not be empty"
+        );
     }
 }

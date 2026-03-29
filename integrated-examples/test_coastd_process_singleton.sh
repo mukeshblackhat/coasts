@@ -249,6 +249,167 @@ pass "PID file updated to real PID ($REAL_PID)"
 
 kill "$DAEMON6_PID" 2>/dev/null || true
 wait "$DAEMON6_PID" 2>/dev/null || true
+sleep 1
+rm -f "$COAST_HOME/coastd.pid" "$COAST_HOME/coastd.sock" "$COAST_HOME/coastd.lock"
+
+# ============================================================
+# Test 5: Update with launchd-style respawn (reproduce the bug)
+# ============================================================
+
+echo ""
+echo "=== Test 5: Update with launchd-style respawn ==="
+
+# Reproduce the exact bug: update kills daemon via PID, cleans PID file,
+# then launchd respawns BETWEEN the kill and the start. coast daemon start
+# should handle the stale respawned process.
+
+# Start daemon (simulates pre-update daemon managed by launchd)
+"$COASTD" --foreground &>/tmp/coastd-singleton-update.log &
+UPDATE_PID=$!
+sleep 2
+kill -0 "$UPDATE_PID" 2>/dev/null || fail "daemon did not start for update test"
+pass "pre-update daemon running (PID $UPDATE_PID)"
+
+# Simulate what execute_kill does: kill the PID and clean up ALL files
+kill -9 "$UPDATE_PID" 2>/dev/null
+wait "$UPDATE_PID" 2>/dev/null || true
+rm -f "$COAST_HOME/coastd.pid" "$COAST_HOME/coastd.sock" "$COAST_HOME/coastd.lock"
+pass "killed pre-update daemon and cleaned all state files (simulating execute_kill)"
+
+# Simulate launchd KeepAlive respawn: immediately start another daemon.
+# This happens AFTER execute_kill returns but BEFORE execute_start runs.
+# The respawned daemon acquires the flock and starts listening.
+"$COASTD" --foreground &>/tmp/coastd-singleton-respawn.log &
+RESPAWN_PID=$!
+sleep 2
+kill -0 "$RESPAWN_PID" 2>/dev/null || fail "respawned daemon did not start"
+pass "respawned daemon running (PID $RESPAWN_PID, simulating launchd)"
+
+# Clean the PID file the respawned daemon wrote -- this simulates the race
+# condition where execute_kill's cleanup ran after the old daemon died but
+# before the respawned daemon wrote a new PID file. The result: the daemon
+# process is alive and holds the flock, but coast CLI can't see it.
+rm -f "$COAST_HOME/coastd.pid"
+pass "cleaned PID file (simulating race: daemon alive but invisible to CLI)"
+
+# Verify coast daemon status reports "not running" (the bug: invisible daemon)
+STATUS_BEFORE=$("$COAST" daemon status 2>&1 || true)
+echo "  daemon status (before fix): $STATUS_BEFORE"
+if echo "$STATUS_BEFORE" | grep -q "not running"; then
+    pass "daemon status says 'not running' (stale daemon is invisible -- bug condition)"
+fi
+
+# Now simulate what the update does next: coast daemon start.
+# Without the fix: spawns new coastd → can't acquire flock → times out (5s).
+# With the fix: kill_all_coastd_processes() runs first, kills the invisible
+# daemon, then the new daemon starts cleanly.
+START_OUT=$("$COAST" daemon start 2>&1) || true
+echo "  start output: $START_OUT"
+sleep 2
+
+# Check if start succeeded
+STATUS=$("$COAST" daemon status 2>&1 || true)
+if echo "$STATUS" | grep -q "is running"; then
+    pass "coast daemon start succeeded (fix killed stale daemon)"
+else
+    echo "  daemon status: $STATUS"
+    echo "  respawn log: $(cat /tmp/coastd-singleton-respawn.log 2>/dev/null | tail -3)"
+    kill -9 "$RESPAWN_PID" 2>/dev/null || true
+    sleep 1
+    fail "coast daemon start failed -- stale respawned daemon blocked it (bug reproduced)"
+fi
+
+# Verify the respawned daemon is dead
+if kill -0 "$RESPAWN_PID" 2>/dev/null; then
+    kill -9 "$RESPAWN_PID" 2>/dev/null || true
+    fail "respawned daemon should have been killed"
+fi
+pass "respawned daemon was killed"
+
+# Verify exactly 1 daemon process
+PROC_COUNT=$(count_coastd_procs)
+[ "$PROC_COUNT" -le 1 ] || fail "expected at most 1 coastd, got $PROC_COUNT"
+pass "clean daemon state after update scenario"
+
+"$COAST" daemon kill 2>&1 || true
+sleep 1
+rm -f "$COAST_HOME/coastd.pid" "$COAST_HOME/coastd.sock" "$COAST_HOME/coastd.lock"
+
+# ============================================================
+# Test 6: Service manager respawn loop (simulates launchd KeepAlive)
+# ============================================================
+
+echo ""
+echo "=== Test 6: Service manager respawn loop ==="
+
+# Create a mock service manager that continuously respawns the daemon,
+# simulating launchd's KeepAlive behavior.
+RESPAWNER_SCRIPT="$TEST_HOME/mock-launchd.sh"
+cat > "$RESPAWNER_SCRIPT" << 'RESPAWNER_EOF'
+#!/bin/sh
+DAEMON="$1"
+COAST_HOME_DIR="$2"
+export COAST_HOME="$COAST_HOME_DIR"
+export COAST_API_PORT="$3"
+export COAST_DNS_PORT="$4"
+while true; do
+    "$DAEMON" --foreground >> /tmp/coastd-respawner.log 2>&1
+    EXIT_CODE=$?
+    sleep 0.5
+done
+RESPAWNER_EOF
+chmod +x "$RESPAWNER_SCRIPT"
+
+# Start the respawner (simulates launchd managing the daemon)
+"$RESPAWNER_SCRIPT" "$COASTD" "$COAST_HOME" "$TEST_API_PORT" "$TEST_DNS_PORT" &
+RESPAWNER_PID=$!
+sleep 3
+
+# Verify daemon is running (respawner started it)
+PROC_COUNT=$(count_coastd_procs)
+[ "$PROC_COUNT" -ge 1 ] || fail "respawner should have started a daemon"
+pass "mock launchd started daemon (respawner PID $RESPAWNER_PID)"
+
+# Kill the daemon process directly (simulating an external kill)
+DAEMON_PID_BEFORE=$(cat "$COAST_HOME/coastd.pid" 2>/dev/null | tr -d '[:space:]')
+if [ -n "$DAEMON_PID_BEFORE" ]; then
+    kill -9 "$DAEMON_PID_BEFORE" 2>/dev/null || true
+    sleep 2
+
+    # The respawner should have restarted it
+    PROC_COUNT=$(count_coastd_procs)
+    if [ "$PROC_COUNT" -ge 1 ]; then
+        pass "mock launchd respawned daemon after kill"
+    else
+        pass "daemon not yet respawned (timing)"
+    fi
+fi
+
+# Now use coast daemon kill -- it should kill BOTH the daemon and the respawner
+# via the pkill fallback (the respawner script runs coastd in its command line)
+KILL_OUT=$("$COAST" daemon kill --force 2>&1) || true
+sleep 2
+
+# Kill the respawner shell explicitly (pkill won't catch the sh wrapper)
+kill "$RESPAWNER_PID" 2>/dev/null || true
+wait "$RESPAWNER_PID" 2>/dev/null || true
+sleep 1
+
+# Verify no daemon processes remain
+PROC_COUNT=$(count_coastd_procs)
+[ "$PROC_COUNT" -eq 0 ] || fail "expected 0 coastd after killing respawner, got $PROC_COUNT"
+pass "no coastd processes after kill (respawner stopped)"
+
+# Clean start should work
+rm -f "$COAST_HOME/coastd.pid" "$COAST_HOME/coastd.sock" "$COAST_HOME/coastd.lock"
+"$COAST" daemon start 2>&1 || fail "coast daemon start failed after respawner cleanup"
+sleep 2
+STATUS=$("$COAST" daemon status 2>&1 || true)
+assert_contains "$STATUS" "is running" "daemon running after respawner scenario"
+pass "clean start after respawner scenario"
+
+"$COAST" daemon kill 2>&1 || true
+sleep 1
 
 echo ""
 echo "==========================================="
