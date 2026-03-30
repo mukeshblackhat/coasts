@@ -129,7 +129,7 @@ if [ -n "${SHELL:-}" ]; then
       FISH_CONFIG="${HOME}/.config/fish/config.fish"
       if [ ! -f "${FISH_CONFIG}" ] || ! grep -qF '.coast/bin' "${FISH_CONFIG}"; then
         mkdir -p "$(dirname "${FISH_CONFIG}")"
-        printf "\n# Coast CLI\nset -gx PATH $HOME/.coast/bin $PATH\n" >> "${FISH_CONFIG}"
+        printf "\n# Coast CLI\nset -gx PATH \$HOME/.coast/bin \$PATH\n" >> "${FISH_CONFIG}"
         info "Added ${INSTALL_DIR} to PATH in ${FISH_CONFIG}"
       fi
       SHELL_RC_FILE="${FISH_CONFIG}"
@@ -257,4 +257,7 @@ printf "  2. ${BOLD}coast help${RESET}              See all available commands\n
 ) >&2
 
 # Make coast available in the current shell (works when invoked via eval)
-export PATH="${HOME}/.coast/bin:${PATH}"
+case "${SHELL:-}" in
+  */fish) printf 'fish_add_path -gP "%s/.coast/bin"\n' "$HOME" ;;
+  *)      printf 'export PATH="%s/.coast/bin:${PATH}"\n' "$HOME" ;;
+esac
