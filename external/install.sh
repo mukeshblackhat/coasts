@@ -129,7 +129,7 @@ if [ -n "${SHELL:-}" ]; then
       FISH_CONFIG="${HOME}/.config/fish/config.fish"
       if [ ! -f "${FISH_CONFIG}" ] || ! grep -qF '.coast/bin' "${FISH_CONFIG}"; then
         mkdir -p "$(dirname "${FISH_CONFIG}")"
-        printf "\n# Coast CLI\nset -gx PATH $HOME/.coast/bin $PATH\n" >> "${FISH_CONFIG}"
+        printf "\n# Coast CLI\nset -gx PATH \$HOME/.coast/bin \$PATH\n" >> "${FISH_CONFIG}"
         info "Added ${INSTALL_DIR} to PATH in ${FISH_CONFIG}"
       fi
       SHELL_RC_FILE="${FISH_CONFIG}"
