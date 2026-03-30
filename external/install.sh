@@ -257,4 +257,7 @@ printf "  2. ${BOLD}coast help${RESET}              See all available commands\n
 ) >&2
 
 # Make coast available in the current shell (works when invoked via eval)
-export PATH="${HOME}/.coast/bin:${PATH}"
+case "${SHELL:-}" in
+  */fish) printf 'fish_add_path -gP "%s/.coast/bin"\n' "$HOME" ;;
+  *)      printf 'export PATH="%s/.coast/bin:${PATH}"\n' "$HOME" ;;
+esac
