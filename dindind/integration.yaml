@@ -157,6 +157,8 @@ tests:
     script: integrated-examples/test_private_paths_assign.sh
     status: pass
     cached_seconds: 139
+  test_build_target:
+    script: integrated-examples/test_build_target.sh
   test_mixed_assign:
     script: integrated-examples/test_mixed_assign.sh
     status: pass
