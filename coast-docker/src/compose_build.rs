@@ -18,6 +18,8 @@ pub struct ComposeBuildDirective {
     pub context: String,
     /// Optional Dockerfile path (relative to context).
     pub dockerfile: Option<String>,
+    /// Optional build target (multi-stage Dockerfile stage name).
+    pub target: Option<String>,
     /// The coast-built image tag (e.g., "coast-built/my-project/app:latest").
     pub coast_image_tag: String,
 }
@@ -128,8 +130,8 @@ fn parse_compose_file_inner(
 
         if has_build {
             let build_val = value.get("build").unwrap();
-            let (context, dockerfile) = match build_val {
-                serde_yaml::Value::String(s) => (s.clone(), None),
+            let (context, dockerfile, target) = match build_val {
+                serde_yaml::Value::String(s) => (s.clone(), None, None),
                 serde_yaml::Value::Mapping(m) => {
                     let ctx = m
                         .get(serde_yaml::Value::String("context".to_string()))
@@ -140,15 +142,20 @@ fn parse_compose_file_inner(
                         .get(serde_yaml::Value::String("dockerfile".to_string()))
                         .and_then(|v| v.as_str())
                         .map(std::string::ToString::to_string);
-                    (ctx, df)
+                    let target = m
+                        .get(serde_yaml::Value::String("target".to_string()))
+                        .and_then(|v| v.as_str())
+                        .map(std::string::ToString::to_string);
+                    (ctx, df, target)
                 }
-                _ => (".".to_string(), None),
+                _ => (".".to_string(), None, None),
             };
 
             build_directives.push(ComposeBuildDirective {
                 service_name: service_name.clone(),
                 context,
                 dockerfile,
+                target,
                 coast_image_tag: coast_built_image_tag(project, &service_name),
             });
         } else if has_image {
@@ -310,6 +317,11 @@ pub fn docker_build_cmd(directive: &ComposeBuildDirective, compose_dir: &Path) -
                 .display()
                 .to_string(),
         );
+    }
+
+    if let Some(ref target) = directive.target {
+        cmd.push("--target".to_string());
+        cmd.push(target.clone());
     }
 
     cmd.push(compose_dir.join(&directive.context).display().to_string());
@@ -641,6 +653,7 @@ services:
             service_name: "app".to_string(),
             context: ".".to_string(),
             dockerfile: None,
+            target: None,
             coast_image_tag: "coast-built/proj/app:latest".to_string(),
         };
         let cmd = docker_build_cmd(&directive, Path::new("/home/user/project"));
@@ -657,6 +670,7 @@ services:
             service_name: "app".to_string(),
             context: "./docker".to_string(),
             dockerfile: Some("Dockerfile.prod".to_string()),
+            target: None,
             coast_image_tag: "coast-built/proj/app:latest".to_string(),
         };
         let cmd = docker_build_cmd(&directive, Path::new("/project"));
@@ -675,6 +689,7 @@ services:
             service_name: "worker".to_string(),
             context: "./services/worker".to_string(),
             dockerfile: None,
+            target: None,
             coast_image_tag: "coast-built/proj/worker:latest".to_string(),
         };
         let cmd = docker_build_cmd(&directive, Path::new("/app"));
@@ -683,7 +698,6 @@ services:
 
     #[test]
     fn test_parse_build_with_extra_fields() {
-        // build: can have args, target, etc. — we only care about context and dockerfile
         let yaml = r#"
 services:
   app:
@@ -700,6 +714,34 @@ services:
         assert_eq!(
             result.build_directives[0].dockerfile,
             Some("Dockerfile".to_string())
+        );
+        assert_eq!(
+            result.build_directives[0].target,
+            Some("builder".to_string())
+        );
+    }
+
+    #[test]
+    fn test_docker_build_cmd_with_target() {
+        let directive = ComposeBuildDirective {
+            service_name: "app".to_string(),
+            context: ".".to_string(),
+            dockerfile: None,
+            target: Some("compose-dev".to_string()),
+            coast_image_tag: "coast-built/proj/app:latest".to_string(),
+        };
+        let cmd = docker_build_cmd(&directive, Path::new("/project"));
+        assert_eq!(
+            cmd,
+            vec![
+                "docker",
+                "build",
+                "-t",
+                "coast-built/proj/app:latest",
+                "--target",
+                "compose-dev",
+                "/project/."
+            ]
         );
     }
 
