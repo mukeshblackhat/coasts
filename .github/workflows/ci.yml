@@ -68,7 +68,7 @@ jobs:
         run: cd coast-guard && npm ci
 
       - name: Generate TypeScript types from Rust
-        run: cd coast-guard && npm run generate:types
+        run: cd coast-guard && COAST_SKIP_UI_BUILD=1 npm run generate:types
 
       - name: Verify generated types
         run: |
