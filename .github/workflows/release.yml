@@ -45,7 +45,8 @@ jobs:
         run: |
           cd coast-guard
           npm ci
-          npm run generate:types
+          COAST_SKIP_UI_BUILD=1 npm run generate:types
+          npm run generate:docs
           npm run build
 
       - name: Build release binaries
@@ -109,7 +110,8 @@ jobs:
         run: |
           cd coast-guard
           npm ci
-          npm run generate:types
+          COAST_SKIP_UI_BUILD=1 npm run generate:types
+          npm run generate:docs
           npm run build
 
       - name: Install cross
