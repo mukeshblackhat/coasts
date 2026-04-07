@@ -82,8 +82,8 @@ jobs:
       - name: Generate docs manifest
         run: cd coast-guard && node scripts/generate-docs.mjs
 
-      - name: Typecheck
-        run: cd coast-guard && npx tsc --noEmit
+      - name: Build UI
+        run: cd coast-guard && npm run build
 
       - name: Lint
         run: cd coast-guard && npm run lint
